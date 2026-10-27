@@ -20,8 +20,12 @@ enum Compliments {
         "Even the semicolons are lining up for head pats. Such a clever little helper!"
     ]
 
-    static func random(excluding previous: String?) -> String {
-        let choices = messages.filter { $0 != previous }
-        return choices.randomElement() ?? messages[0]
+    static func randomFollowUp(excluding previous: String?) -> String {
+        let choices = messages.filter {
+            $0 != previous &&
+            !$0.hasPrefix("Who's a good boy?") &&
+            !$0.hasPrefix("Who is a good boy?")
+        }
+        return choices.randomElement() ?? messages[2]
     }
 }

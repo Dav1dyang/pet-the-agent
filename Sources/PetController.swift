@@ -19,6 +19,7 @@ final class PetController: ObservableObject {
     @Published private(set) var testSecondsRemaining = 0
     @Published private(set) var testWiggles = 0
     @Published private(set) var testPetCount = 0
+    @Published private(set) var testPhrase: String?
     @Published private(set) var testOutcome: PetTestOutcome?
     @Published private(set) var skippedWhileTyping = false
     @Published private(set) var targetAppReady = false
@@ -27,6 +28,7 @@ final class PetController: ObservableObject {
     @Published var armed = false {
         didSet {
             hingeDetector.reset(at: angle)
+            liveSequence.reset()
             skippedWhileTyping = false
         }
     }
@@ -36,11 +38,14 @@ final class PetController: ObservableObject {
             UserDefaults.standard.set(sensitivity, forKey: "hingeSensitivityDegreesV2")
             hingeDetector.excursionDegrees = sensitivity
             hingeDetector.reset(at: angle)
+            liveSequence.reset()
             testOutcome = nil
         }
     }
 
     private var hingeDetector = PetGestureDetector(excursionDegrees: 0.1)
+    private var liveSequence = PettingSequence()
+    private var testSequence = PettingSequence()
     private var lastPermissionCheck = 0.0
     private var testTimer: Timer?
     private var petFeedbackTimer: Timer?
@@ -81,8 +86,11 @@ final class PetController: ObservableObject {
         testSecondsRemaining = 12
         testWiggles = 0
         testPetCount = 0
+        testPhrase = nil
         testOutcome = nil
         hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
+        liveSequence.reset()
+        testSequence.reset()
 
         testTimer?.invalidate()
         let newTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
@@ -111,6 +119,7 @@ final class PetController: ObservableObject {
         testWiggles = 0
         testOutcome = outcome
         hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
+        liveSequence.reset()
     }
 
     private func refreshPermissions(at time: TimeInterval) {
@@ -134,12 +143,15 @@ final class PetController: ObservableObject {
         }
 
         if testing {
+            let wasPetting = hingeDetector.isInPet
             let detected = hingeDetector.consume(angle: newAngle, at: now)
+            if wasPetting && !hingeDetector.isInPet { testSequence.reset() }
             if testWiggles != hingeDetector.completedWiggles {
                 testWiggles = hingeDetector.completedWiggles
             }
             if detected {
                 testPetCount += 1
+                testPhrase = testSequence.next(excluding: testPhrase)
                 showPetFeedback()
             }
             return
@@ -147,9 +159,13 @@ final class PetController: ObservableObject {
 
         guard armed, accessibilityAllowed, supportedApp != nil else {
             hingeDetector.reset(at: newAngle)
+            liveSequence.reset()
             return
         }
-        if hingeDetector.consume(angle: newAngle, at: now) {
+        let wasPetting = hingeDetector.isInPet
+        let detected = hingeDetector.consume(angle: newAngle, at: now)
+        if wasPetting && !hingeDetector.isInPet { liveSequence.reset() }
+        if detected {
             sendCompliment()
         }
     }
@@ -160,8 +176,10 @@ final class PetController: ObservableObject {
             skipNoticeUntil = ProcessInfo.processInfo.systemUptime + 2.5
             return
         }
-        let message = Compliments.random(excluding: lastSent)
+        var nextSequence = liveSequence
+        let message = nextSequence.next(excluding: lastSent)
         if let app = AppMessenger.send(message) {
+            liveSequence = nextSequence
             skippedWhileTyping = false
             lastSent = message
             lastSentApp = app

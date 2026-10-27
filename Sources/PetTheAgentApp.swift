@@ -98,7 +98,7 @@ private struct PetMenu: View {
             }
 
             HStack {
-                Text("More strokes, more praise · at least 2.5s apart")
+                Text("Keep petting for the next line · at least 2.5s apart")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
@@ -212,7 +212,7 @@ private struct PetMenu: View {
             .controlSize(.large)
             .disabled(!controller.hingeAvailable)
 
-            Text("Two gentle strokes start a pet. Keep moving for more praise after a short pause. The test counts pets but never sends.")
+            Text("Two gentle strokes start a pet. Keep moving to hear the next line. Testing previews the words but never sends.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -262,7 +262,7 @@ private struct PetMenu: View {
                 .foregroundStyle(detected ? Color.green : Color.orange)
                 .accessibilityHidden(true)
             Text(detected
-                 ? "\(controller.testPetCount) \(controller.testPetCount == 1 ? "pet" : "pets") felt. Nothing was sent."
+                 ? "\(controller.testPetCount) \(controller.testPetCount == 1 ? "pet" : "pets") felt. Last line: “\(controller.testPhrase ?? "")” Nothing was sent."
                  : "No pet detected. Try two gentle strokes or adjust the distance.")
                 .font(.caption)
                 .fixedSize(horizontal: false, vertical: true)
@@ -302,7 +302,7 @@ private struct PetMenu: View {
         if controller.testing {
             if controller.testPetCount > 0 {
                 return ("\(controller.testPetCount) \(controller.testPetCount == 1 ? "pet" : "pets") felt",
-                        "Keep petting for another. At least 2.5 seconds between pets.",
+                        "“\(controller.testPhrase ?? "")” Keep petting for the next line.",
                         "heart.fill", .teal)
             }
             if controller.testWiggles == 1 {
