@@ -1,17 +1,9 @@
 import AppKit
 import Combine
 
-enum TriggerSensor: String, CaseIterable, Identifiable {
-    case hinge
-    case accelerometer
-
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .hinge: "Hinge angle"
-        case .accelerometer: "Motion sensor"
-        }
-    }
+enum PetTestOutcome: Equatable {
+    case detected
+    case missed
 }
 
 @MainActor
@@ -19,34 +11,15 @@ final class PetController: ObservableObject {
     @Published private(set) var angle: Double?
     @Published private(set) var hingeError: String?
     @Published private(set) var hingeResolutionDegrees = 1.0
-    @Published private(set) var motionActivityG: Double?
-    @Published private(set) var motionPeakG = 0.0
-    @Published private(set) var motionError: String?
-    @Published private(set) var motionDeviceFound = false
-    @Published private(set) var motionLive = false
     @Published private(set) var accessibilityAllowed = WarpMessenger.hasAccessibilityAccess
-    @Published private(set) var warpFrontmost = false
     @Published private(set) var lastSent: String?
     @Published private(set) var sentCount = 0
     @Published private(set) var testing = false
-    @Published private(set) var testResult: String?
-
-    @Published var triggerSensor: TriggerSensor = .hinge {
-        didSet {
-            UserDefaults.standard.set(triggerSensor.rawValue, forKey: "triggerSensor")
-            armed = false
-            testing = false
-            testResult = nil
-            hingeDetector.reset(at: angle)
-            motionDetector.reset()
-        }
-    }
+    @Published private(set) var testSecondsRemaining = 0
+    @Published private(set) var testOutcome: PetTestOutcome?
 
     @Published var armed = false {
-        didSet {
-            hingeDetector.reset(at: angle)
-            motionDetector.reset()
-        }
+        didSet { hingeDetector.reset(at: angle) }
     }
 
     @Published var sensitivity: Double = 0.1 {
@@ -54,86 +27,38 @@ final class PetController: ObservableObject {
             UserDefaults.standard.set(sensitivity, forKey: "hingeSensitivityDegreesV2")
             hingeDetector.excursionDegrees = sensitivity
             hingeDetector.reset(at: angle)
-        }
-    }
-
-    @Published var motionThresholdG: Double = 0.03 {
-        didSet {
-            UserDefaults.standard.set(motionThresholdG, forKey: "motionThresholdG")
-            motionDetector.thresholdG = motionThresholdG
-            motionDetector.reset()
+            testOutcome = nil
         }
     }
 
     private var hingeDetector = PetGestureDetector(excursionDegrees: 0.1)
-    private var motionDetector = MotionPulseDetector()
+    private var warpFrontmost = false
     private var lastPermissionCheck = 0.0
-    private var lastMotionDisplayUpdate = 0.0
     private var testTimer: Timer?
 
     private lazy var hingeSensor = HingeSensor(
         onAngle: { [weak self] value in self?.receive(angle: value) },
         onError: { [weak self] message in
-            self?.hingeError = message
-            if self?.triggerSensor == .hinge { self?.armed = false }
-        }
-    )
-
-    private lazy var accelerometer = AccelerometerSensor(
-        onActivity: { [weak self] activity, time in
-            self?.receive(motionActivity: activity, at: time)
-        },
-        onError: { [weak self] message in
-            self?.motionError = message.isEmpty ? nil : message
-            if !message.isEmpty, self?.triggerSensor == .accelerometer { self?.armed = false }
+            guard let self else { return }
+            self.hingeError = message
+            self.armed = false
+            if self.testing { self.finishTest(outcome: nil) }
         }
     )
 
     init() {
-        let savedHinge = UserDefaults.standard.double(forKey: "hingeSensitivityDegreesV2")
-        if (0.1...5).contains(savedHinge) { sensitivity = savedHinge }
-        let savedMotion = UserDefaults.standard.double(forKey: "motionThresholdG")
-        if (0.005...0.1).contains(savedMotion) { motionThresholdG = savedMotion }
+        let saved = UserDefaults.standard.double(forKey: "hingeSensitivityDegreesV2")
+        if (0.1...5).contains(saved) { sensitivity = saved }
         hingeDetector.excursionDegrees = sensitivity
-        motionDetector.thresholdG = motionThresholdG
 
         hingeError = hingeSensor.error
         hingeResolutionDegrees = hingeSensor.resolutionDegrees
         if hingeResolutionDegrees >= 1, sensitivity < 1 { sensitivity = 1 }
         hingeSensor.start()
-
-        motionError = accelerometer.error
-        motionDeviceFound = accelerometer.deviceFound
-        if let saved = UserDefaults.standard.string(forKey: "triggerSensor"),
-           let mode = TriggerSensor(rawValue: saved) {
-            triggerSensor = mode
-        }
     }
 
     var hingeMinimumDegrees: Double { hingeResolutionDegrees < 1 ? 0.1 : 1 }
-
-    var selectedSensorAvailable: Bool {
-        switch triggerSensor {
-        case .hinge: hingeError == nil && angle != nil
-        case .accelerometer: motionLive && motionError == nil
-        }
-    }
-
-    var status: String {
-        switch triggerSensor {
-        case .hinge:
-            if let hingeError { return hingeError }
-            if angle == nil { return "Waiting for a hinge reading…" }
-        case .accelerometer:
-            if let motionError { return motionError }
-            if !motionLive { return "Waiting for accelerometer readings…" }
-        }
-        if testing { return "Testing this sensor. Move the MacBook now." }
-        if !accessibilityAllowed { return "Allow Accessibility to send messages." }
-        if !armed { return "Ready. Turn on petting when you want to use it." }
-        if !warpFrontmost { return "Armed. Switch to your Warp agent prompt." }
-        return "Armed. A pet will send one compliment."
-    }
+    var hingeAvailable: Bool { hingeError == nil && angle != nil }
 
     func requestAccessibility() {
         WarpMessenger.requestAccessibilityAccess()
@@ -141,42 +66,40 @@ final class PetController: ObservableObject {
     }
 
     func startTest() {
-        armed = false
+        guard hingeAvailable, !testing else { return }
         testing = true
-        testResult = "Move the screen gently during the next 8 seconds."
-        motionPeakG = 0
-        hingeDetector.reset(at: angle)
-        motionDetector.reset()
+        testSecondsRemaining = 8
+        testOutcome = nil
+        hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
+
         testTimer?.invalidate()
-        let newTimer = Timer(timeInterval: 8, repeats: false) { [weak self] _ in
+        let newTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.testing else { return }
-                self.finishTest(success: false)
+                self.testSecondsRemaining -= 1
+                if self.testSecondsRemaining == 0 {
+                    self.finishTest(outcome: .missed)
+                }
             }
         }
         RunLoop.main.add(newTimer, forMode: .common)
         testTimer = newTimer
     }
 
-    private func finishTest(success: Bool) {
+    private func finishTest(outcome: PetTestOutcome?) {
         testTimer?.invalidate()
         testTimer = nil
         testing = false
+        testSecondsRemaining = 0
+        testOutcome = outcome
         hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
-        motionDetector = MotionPulseDetector(thresholdG: motionThresholdG)
-        if success {
-            testResult = "Pet detected! This setting works without sending a message."
-        } else if triggerSensor == .accelerometer, !motionLive {
-            testResult = "No accelerometer readings arrived. Try hinge angle instead."
-        } else {
-            testResult = "No pet detected. Try a lower threshold or a slightly larger movement."
-        }
     }
 
     private func refreshPermissions(at time: TimeInterval) {
         if time - lastPermissionCheck > 1 {
             accessibilityAllowed = WarpMessenger.hasAccessibilityAccess
             warpFrontmost = WarpMessenger.isWarpFrontmost
+            if !accessibilityAllowed { armed = false }
             lastPermissionCheck = time
         }
     }
@@ -185,43 +108,21 @@ final class PetController: ObservableObject {
         angle = newAngle
         let now = ProcessInfo.processInfo.systemUptime
         refreshPermissions(at: now)
-        guard triggerSensor == .hinge else {
-            hingeDetector.reset(at: newAngle)
-            return
-        }
-        if testing {
-            if hingeDetector.consume(angle: newAngle, at: now) { finishTest(success: true) }
-            return
-        }
-        guard armed, accessibilityAllowed, warpFrontmost else {
-            hingeDetector.reset(at: newAngle)
-            return
-        }
-        if hingeDetector.consume(angle: newAngle, at: now) { sendCompliment() }
-    }
 
-    private func receive(motionActivity activity: Double, at time: TimeInterval) {
-        motionLive = true
-        motionError = nil
-        if time - lastMotionDisplayUpdate > 0.08 {
-            motionActivityG = activity
-            lastMotionDisplayUpdate = time
-        }
-        if testing, triggerSensor == .accelerometer { motionPeakG = max(motionPeakG, activity) }
-        refreshPermissions(at: time)
-        guard triggerSensor == .accelerometer else {
-            motionDetector.reset()
-            return
-        }
         if testing {
-            if motionDetector.consume(activityG: activity, at: time) { finishTest(success: true) }
+            if hingeDetector.consume(angle: newAngle, at: now) {
+                finishTest(outcome: .detected)
+            }
             return
         }
+
         guard armed, accessibilityAllowed, warpFrontmost else {
-            motionDetector.reset()
+            hingeDetector.reset(at: newAngle)
             return
         }
-        if motionDetector.consume(activityG: activity, at: time) { sendCompliment() }
+        if hingeDetector.consume(angle: newAngle, at: now) {
+            sendCompliment()
+        }
     }
 
     private func sendCompliment() {
