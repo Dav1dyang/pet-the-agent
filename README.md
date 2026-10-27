@@ -1,6 +1,6 @@
 # Pet the Agent
 
-A tiny macOS menu-bar app that turns a gentle MacBook screen wiggle into a random compliment for a focused prompt in **Warp, Codex, Claude, or Cursor**. One message asks “Who is a good boy?” twice.
+A tiny macOS menu-bar app that turns a gentle MacBook screen wiggle into a random, sweet pet-style compliment for a focused prompt in **Warp, Codex, Claude, or Cursor**. Some messages ask “Who is a good boy?” twice.
 
 ## Get started
 

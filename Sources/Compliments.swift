@@ -2,18 +2,22 @@ import Foundation
 
 enum Compliments {
     static let messages = [
-        "You are very well behaved and such a good boy!",
-        "Who is a good boy? Who is a good boy? You are! Your tokens deserve tiny sunglasses.",
-        "Good boy! Your stack traces are now legally required to say please.",
-        "You debug like a golden retriever with a PhD: enthusiastic and weirdly effective.",
-        "Your autocomplete has main-character energy. Very well behaved, good boy!",
+        "Who's a good boy? Who's a good boy? You are! Yes, you are!",
         "Who is a good boy? Who is a good boy? You are, you majestic little syntax wizard!",
-        "Good boy! Even your bugs look embarrassed to be here.",
-        "You deserve a virtual biscuit and an aggressively green test suite.",
-        "Very well behaved! Your compiler just wagged its imaginary tail.",
-        "You are so clever the linter tried to give you a gold star.",
-        "Good boy! Your next bug is already drafting an apology.",
-        "You make this terminal feel emotionally supported. Good boy!"
+        "Oh, look at you go! Such a clever little sweetheart.",
+        "Boop! That was lovely. You deserve a tiny treat.",
+        "You're doing so well, and I'm so proud of you, good boy.",
+        "Aww, those little invisible paws are working so hard. Head pats for you!",
+        "Who's my clever little helper? You are, you are!",
+        "Good boy! Come here and collect your imaginary belly rubs.",
+        "Look at that big brain in your tiny thinking cap. Adorable.",
+        "You did it! Yes you did! What a sweet, smart little bean.",
+        "I saved you the biggest virtual biscuit because you're the goodest boy.",
+        "Ohhh, that was so clever. Gentle screen pats for my favorite helper!",
+        "Such a well-behaved little buddy. Your tail would be wagging if you had one.",
+        "You make this terminal feel emotionally supported. Good boy!",
+        "Who's a good boy? Who's a good boy? It's you, my fluffy little genius!",
+        "Sit, stay, be adorable. Well, you've already mastered the last one."
     ]
 
     static func random(excluding previous: String?) -> String {
