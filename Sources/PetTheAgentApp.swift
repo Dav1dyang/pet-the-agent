@@ -71,7 +71,7 @@ private struct PetMenu: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Pet the Agent")
                     .font(.system(size: 17, weight: .semibold))
-                Text("A little encouragement, one wiggle away")
+                Text("A little encouragement, two wiggles away")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -157,7 +157,7 @@ private struct PetMenu: View {
             .controlSize(.large)
             .disabled(!controller.hingeAvailable || controller.testing)
 
-            Text("Tip the screen out and back. Testing never sends a message.")
+            Text("Rock the screen gently back and forth twice. Testing never sends a message.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -208,7 +208,7 @@ private struct PetMenu: View {
                 .accessibilityHidden(true)
             Text(detected
                  ? "Pet detected! That wiggle works. Nothing was sent."
-                 : "No pet detected. Try a bigger wiggle or lower the distance.")
+                 : "No pet detected. Try two quick wiggles or adjust the distance.")
                 .font(.caption)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -232,7 +232,7 @@ private struct PetMenu: View {
                     "laptopcomputer", .secondary)
         }
         if controller.testing {
-            return ("Listening for a pet", "Gently move the screen out and back.",
+            return ("Listening for a pet", "Make two quick, small back-and-forth wiggles.",
                     "waveform", .teal)
         }
         if controller.armed {
@@ -243,7 +243,7 @@ private struct PetMenu: View {
             return ("Ready to test", "Allow Accessibility before sending compliments.",
                     "hand.tap.fill", .accentColor)
         }
-        return ("Ready for a pet", "Test your wiggle, then turn on compliments.",
+        return ("Ready for a pet", "Test two little wiggles, then turn on compliments.",
                 "checkmark.circle.fill", .green)
     }
 }
