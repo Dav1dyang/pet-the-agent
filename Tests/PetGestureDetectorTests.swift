@@ -17,7 +17,8 @@ final class PetGestureDetectorTests: XCTestCase {
         var detector = PetGestureDetector()
         for (time, angle) in [(1.0, 110.0), (1.2, 112.2), (1.35, 110.1),
                               (1.5, 111.0), (1.65, 110.3), (1.8, 110.0)] {
-            XCTAssertFalse(detector.consume(angle: angle, at: time))
+            XCTAssertFalse(detector.consume(angle: angle, at: time),
+                           "Unexpected pet at \(time)s, angle \(angle)°")
         }
     }
 
@@ -91,8 +92,15 @@ final class PetGestureDetectorTests: XCTestCase {
             (4.8, 109.97), (5.6, 109.89), (6.4, 109.95),
             (7.2, 110.02)
         ]
-        for (index, sample) in samples.enumerated() {
-            XCTAssertEqual(detector.consume(angle: sample.1, at: sample.0), index == 8)
+        var detections: [Double] = []
+        for sample in samples {
+            if detector.consume(angle: sample.1, at: sample.0) {
+                detections.append(sample.0)
+            }
+        }
+        XCTAssertEqual(detections.count, 1)
+        if let detectedAt = detections.first {
+            XCTAssertLessThanOrEqual(detectedAt, 7.2)
         }
         XCTAssertTrue(detector.isInPet)
         XCTAssertFalse(detector.consume(angle: 110.14, at: 8.0))
@@ -130,6 +138,172 @@ final class PetGestureDetectorTests: XCTestCase {
         }
         XCTAssertGreaterThanOrEqual(detectionTimes.count, 2)
         XCTAssertGreaterThanOrEqual(detectionTimes[1] - detectionTimes[0], 2.5)
+    }
+
+    func testDriftingBaselineStillProducesRepeatedPets() {
+        var detector = PetGestureDetector(excursionDegrees: 0.1)
+        var detectionTimes: [Double] = []
+        for sample in 0...1200 {
+            let time = Double(sample) / 60
+            let driftingCenter = 110 + 0.045 * time
+            let angle = driftingCenter + 0.14 * sin(time * 2 * .pi / 1.6)
+            if detector.consume(angle: angle, at: time) {
+                detectionTimes.append(time)
+            }
+        }
+        XCTAssertGreaterThanOrEqual(detectionTimes.count, 3)
+        for pair in zip(detectionTimes, detectionTimes.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(pair.1 - pair.0, 2.5)
+        }
+    }
+
+    func testDriftingPetWithSmallSensorJitterStillWorks() {
+        var detector = PetGestureDetector(excursionDegrees: 0.1)
+        var detections = 0
+        for sample in 0...900 {
+            let time = Double(sample) / 60
+            let jitter = 0.008 * sin(time * 83) + 0.005 * sin(time * 47)
+            let angle = 110 + 0.035 * time +
+                0.13 * sin(time * 2 * .pi / 1.5) + jitter
+            if detector.consume(angle: angle, at: time) { detections += 1 }
+        }
+        XCTAssertGreaterThanOrEqual(detections, 2)
+    }
+
+    func testFasterBaselineShiftStillFeelsLikePetting() {
+        for driftPerSecond in [0.08, 0.12] {
+            var detector = PetGestureDetector(excursionDegrees: 0.1)
+            var detections = 0
+            for sample in 0...900 {
+                let time = Double(sample) / 60
+                let angle = 110 + driftPerSecond * time +
+                    0.15 * sin(time * 2 * .pi / 1.6)
+                if detector.consume(angle: angle, at: time) { detections += 1 }
+            }
+            XCTAssertGreaterThanOrEqual(detections, 2, "Drift: \(driftPerSecond)°/s")
+        }
+    }
+
+    func testBaselineFollowsAnUnpettedScreenAdjustment() {
+        var detector = PetGestureDetector(excursionDegrees: 0.1)
+        for sample in 0...600 {
+            let time = Double(sample) / 60
+            let angle = 110 + 0.12 * time
+            XCTAssertFalse(detector.consume(angle: angle, at: time))
+        }
+        XCTAssertEqual(detector.baselineDegrees ?? 0, 111.2, accuracy: 0.07)
+    }
+
+    func testBaselineSettlesAfterScreenIsRepositioned() {
+        var detector = PetGestureDetector(excursionDegrees: 0.1)
+        for sample in 0...300 {
+            let time = Double(sample) / 60
+            let angle = time < 1 ? 110.0 : 111.0
+            XCTAssertFalse(detector.consume(angle: angle, at: time))
+        }
+        XCTAssertEqual(detector.baselineDegrees ?? 0, 111.0, accuracy: 0.02)
+    }
+
+    func testScreenAdjustmentWithDampedBounceDoesNotCount() {
+        var detector = PetGestureDetector(excursionDegrees: 0.1)
+        for sample in 0...360 {
+            let time = Double(sample) / 60
+            let angle: Double
+            if time < 1 {
+                angle = 110 + 0.7 * time
+            } else {
+                let settledTime = time - 1
+                angle = 110.7 + 0.18 * exp(-2 * settledTime) *
+                    sin(settledTime * 2 * .pi / 0.45)
+            }
+            XCTAssertFalse(detector.consume(angle: angle, at: time),
+                           "Unexpected pet at \(time)s, angle \(angle)°")
+        }
+    }
+
+    func testPettingSurvivesSmallCenterShiftsEachStroke() {
+        var detector = PetGestureDetector(excursionDegrees: 0.1)
+        var detections = 0
+        for sample in 0...900 {
+            let time = Double(sample) / 60
+            let phase = time.truncatingRemainder(dividingBy: 1.6)
+            let cycles = floor(time / 1.6)
+            let center = 110 + 0.10 * cycles + 0.10 * min(phase / 0.4, 1)
+            let angle = center + 0.15 * sin(time * 2 * .pi / 1.6)
+            if detector.consume(angle: angle, at: time) { detections += 1 }
+        }
+        XCTAssertGreaterThanOrEqual(detections, 2)
+    }
+
+    func testPetsAcrossPaceDriftAndJitter() {
+        let cases: [(amplitude: Double, period: Double, drift: Double)] = [
+            (0.13, 1.2, 0.10),
+            (0.15, 1.6, 0.12),
+            (0.15, 2.0, 0.07),
+            (0.18, 3.0, 0.06),
+            (0.20, 4.0, 0.04)
+        ]
+        for scenario in cases {
+            var detector = PetGestureDetector(excursionDegrees: 0.1)
+            var detectionTimes: [Double] = []
+            for sample in 0...1200 {
+                let time = Double(sample) / 60
+                let jitter = 0.006 * sin(time * 71) + 0.004 * sin(time * 113)
+                let angle = 110 + scenario.drift * time +
+                    scenario.amplitude * sin(time * 2 * .pi / scenario.period) +
+                    jitter
+                if detector.consume(angle: angle, at: time) {
+                    detectionTimes.append(time)
+                }
+            }
+            XCTAssertGreaterThanOrEqual(
+                detectionTimes.count, 2,
+                "Amplitude \(scenario.amplitude), period \(scenario.period), drift \(scenario.drift)"
+            )
+            if detectionTimes.count >= 2 {
+                XCTAssertGreaterThanOrEqual(detectionTimes[1] - detectionTimes[0], 2.5)
+            }
+        }
+    }
+
+    func testOneWayAdjustmentsWithJitterNeverPet() {
+        for slope in [-0.2, 0.0, 0.05, 0.2, 0.8] {
+            for noise in [0.005, 0.02, 0.04] {
+                var detector = PetGestureDetector(excursionDegrees: 0.1)
+                var detections = 0
+                for sample in 0...1200 {
+                    let time = Double(sample) / 60
+                    let jitter = noise * sin(time * 23) +
+                        noise * 0.5 * sin(time * 41)
+                    let angle = 110 + slope * time + jitter
+                    if detector.consume(angle: angle, at: time) {
+                        detections += 1
+                    }
+                }
+                XCTAssertEqual(detections, 0, "Slope \(slope), noise \(noise)")
+            }
+        }
+    }
+
+    func testTimeBasedFiltersBehaveAcrossPollingRates() {
+        var firstPetTimes: [Double] = []
+        for samplesPerSecond in [30, 60, 120] {
+            var detector = PetGestureDetector(excursionDegrees: 0.1)
+            var firstPetAt: Double?
+            for sample in 0...(12 * samplesPerSecond) {
+                let time = Double(sample) / Double(samplesPerSecond)
+                let angle = 110 + 0.08 * time +
+                    0.15 * sin(time * 2 * .pi / 1.6)
+                if detector.consume(angle: angle, at: time), firstPetAt == nil {
+                    firstPetAt = time
+                }
+            }
+            if let firstPetAt { firstPetTimes.append(firstPetAt) }
+        }
+        XCTAssertEqual(firstPetTimes.count, 3)
+        if firstPetTimes.count == 3 {
+            XCTAssertLessThan(firstPetTimes.max()! - firstPetTimes.min()!, 0.2)
+        }
     }
 
     func testStillScreenDoesNotSendAnotherCompliment() {

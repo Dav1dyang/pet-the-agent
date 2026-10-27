@@ -11,6 +11,7 @@ final class PetController: ObservableObject {
     @Published private(set) var angle: Double?
     @Published private(set) var hingeError: String?
     @Published private(set) var hingeResolutionDegrees = 1.0
+    @Published private(set) var calibratedCenter: Double?
     @Published private(set) var accessibilityAllowed = AppMessenger.hasAccessibilityAccess
     @Published private(set) var lastSent: String?
     @Published private(set) var lastSentApp: SupportedApp?
@@ -89,6 +90,7 @@ final class PetController: ObservableObject {
         testPhrase = nil
         testOutcome = nil
         hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
+        calibratedCenter = angle
         liveSequence.reset()
         testSequence.reset()
 
@@ -145,6 +147,7 @@ final class PetController: ObservableObject {
         if testing {
             let wasPetting = hingeDetector.isInPet
             let detected = hingeDetector.consume(angle: newAngle, at: now)
+            calibratedCenter = hingeDetector.baselineDegrees
             if wasPetting && !hingeDetector.isInPet { testSequence.reset() }
             if testWiggles != hingeDetector.completedWiggles {
                 testWiggles = hingeDetector.completedWiggles

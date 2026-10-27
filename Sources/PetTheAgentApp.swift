@@ -172,6 +172,18 @@ private struct PetMenu: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
+            if controller.testing, let center = controller.calibratedCenter {
+                HStack {
+                    Text("Adaptive center")
+                    Spacer()
+                    Text(String(format: controller.hingeResolutionDegrees < 1
+                                ? "%.2f°" : "%.0f°", center))
+                        .monospacedDigit()
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+
             Divider()
 
             HStack(alignment: .firstTextBaseline) {

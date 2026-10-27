@@ -11,15 +11,24 @@ struct PetGestureDetector {
     private let trackingPauseSeconds: TimeInterval = 2.2
     private let petRestSeconds: TimeInterval = 1.5
     private let repeatIntervalSeconds: TimeInterval = 2.5
+    private var inputResponseSeconds: TimeInterval {
+        excursionDegrees <= 0.25 ? 0.05 : 0.025
+    }
+    private let baselineResponseSeconds: TimeInterval = 0.45
+    private let minimumReversalSeconds: TimeInterval = 0.12
 
     private var anchor: Double?
     private var origin: Double?
     private var peak: Double?
+    private var peakAt = 0.0
     private var direction = 0.0
     private var startedAt = 0.0
+    private var firstWiggleExcursion = 0.0
     private var lastSampleAt: TimeInterval?
     private var lastMotionAt: TimeInterval?
     private var motionReference: Double?
+    private var filteredInputDegrees: Double?
+    private(set) var baselineDegrees: Double?
     private var suppressedUntil = 0.0
     private var lastTriggerAt: TimeInterval?
 
@@ -28,6 +37,8 @@ struct PetGestureDetector {
         lastSampleAt = nil
         lastMotionAt = nil
         motionReference = angle
+        filteredInputDegrees = angle
+        baselineDegrees = angle
         lastTriggerAt = nil
         resetTracking(at: angle)
     }
@@ -38,25 +49,42 @@ struct PetGestureDetector {
             return false
         }
 
-        if let lastSampleAt, time - lastSampleAt > 1.5 {
+        let sampleInterval = lastSampleAt.map { time - $0 }
+        if let sampleInterval, sampleInterval > 1.5 {
             reset(at: angle)
         }
         lastSampleAt = time
 
+        // Fast input minus slow baseline follows the user's two-filter design.
+        // Time-based gains give the same behavior if the polling rate varies.
+        if let filteredInputDegrees, let baselineDegrees,
+           let sampleInterval, sampleInterval > 0 {
+            let inputWeight = 1 - exp(-sampleInterval / inputResponseSeconds)
+            let baselineWeight = 1 - exp(-sampleInterval / baselineResponseSeconds)
+            self.filteredInputDegrees = filteredInputDegrees +
+                inputWeight * (angle - filteredInputDegrees)
+            self.baselineDegrees = baselineDegrees +
+                baselineWeight * (angle - baselineDegrees)
+        } else {
+            filteredInputDegrees = angle
+            baselineDegrees = angle
+        }
+        let inputAngle = filteredInputDegrees ?? angle
+
         // A fresh stroke after a long still period is a new attempt, even if
         // this sample itself is the first meaningful movement.
         if !isInPet, let lastMotionAt, time - lastMotionAt > trackingPauseSeconds {
-            resetTracking(at: angle)
+            resetTracking(at: inputAngle)
         }
 
         let motionStep = max(0.025, excursionDegrees * 0.15)
         if let motionReference {
-            if abs(angle - motionReference) >= motionStep {
-                self.motionReference = angle
+            if abs(inputAngle - motionReference) >= motionStep {
+                self.motionReference = inputAngle
                 lastMotionAt = time
             }
         } else {
-            motionReference = angle
+            motionReference = inputAngle
             lastMotionAt = time
         }
 
@@ -64,30 +92,31 @@ struct PetGestureDetector {
             if let lastMotionAt, time - lastMotionAt >= petRestSeconds {
                 isInPet = false
                 lastTriggerAt = nil
-                resetTracking(at: angle)
+                resetTracking(at: inputAngle)
                 return false
             }
         }
 
         if time < suppressedUntil { return false }
         guard let anchor else {
-            self.anchor = angle
+            self.anchor = inputAngle
             return false
         }
 
-        let displacement = angle - anchor
+        let displacement = inputAngle - anchor
         let maximumDisplacement = max(1.5, excursionDegrees * 2.75)
-        if abs(angle - (origin ?? anchor)) > maximumDisplacement ||
+        if abs(inputAngle - (origin ?? anchor)) > maximumDisplacement ||
             ((peak != nil || completedWiggles > 0) &&
              time - startedAt > maximumGestureSeconds) {
-            rejectMovement(at: angle, time: time)
+            rejectMovement(at: inputAngle, time: time)
             return false
         }
 
         guard let peak else {
-            if abs(displacement) >= excursionDegrees {
+            if abs(displacement) >= excursionDegrees * 0.95 {
                 direction = displacement > 0 ? 1 : -1
-                self.peak = angle
+                self.peak = inputAngle
+                peakAt = time
                 if completedWiggles == 0 {
                     startedAt = time
                     origin = anchor
@@ -96,36 +125,48 @@ struct PetGestureDetector {
             return false
         }
 
-        if direction * (angle - peak) > 0 {
-            self.peak = angle
+        if direction * (inputAngle - peak) > 0 {
+            self.peak = inputAngle
+            peakAt = time
             return false
         }
 
-        let returnDistance = direction * (peak - angle)
-        let nearAnchor = abs(displacement) <= excursionDegrees * 0.9
-        guard returnDistance >= excursionDegrees * 0.6, nearAnchor else { return false }
+        let returnDistance = direction * (peak - inputAngle)
+        // The live center allows pressure on the screen to shift the resting
+        // angle without demanding a return to the old stroke's exact start.
+        let deltaFromBaseline = inputAngle - (baselineDegrees ?? anchor)
+        let centerDistance = min(abs(displacement), abs(deltaFromBaseline))
+        guard returnDistance >= excursionDegrees * 0.6,
+              centerDistance <= excursionDegrees * 0.9,
+              time - peakAt >= minimumReversalSeconds else { return false }
 
         completedWiggles += 1
+        let wiggleExcursion = abs(peak - anchor)
         self.peak = nil
         direction = 0
         let requiredWiggles = isInPet ? 1 : 2
         guard completedWiggles == requiredWiggles else {
-            self.anchor = angle
+            firstWiggleExcursion = wiggleExcursion
+            self.anchor = inputAngle
+            return false
+        }
+        if !isInPet && wiggleExcursion < firstWiggleExcursion * 0.35 {
+            rejectMovement(at: inputAngle, time: time)
             return false
         }
         guard time - startedAt >= 0.18 else {
-            rejectMovement(at: angle, time: time)
+            rejectMovement(at: inputAngle, time: time)
             return false
         }
 
         let shouldTrigger = !isInPet ||
             (lastTriggerAt.map { time - $0 >= repeatIntervalSeconds } ?? false)
-        resetTracking(at: angle)
+        resetTracking(at: inputAngle)
         guard shouldTrigger else { return false }
         isInPet = true
         lastTriggerAt = time
         lastMotionAt = time
-        motionReference = angle
+        motionReference = inputAngle
         return true
     }
 
@@ -133,9 +174,11 @@ struct PetGestureDetector {
         anchor = angle
         origin = nil
         peak = nil
+        peakAt = 0
         direction = 0
         completedWiggles = 0
         startedAt = 0
+        firstWiggleExcursion = 0
     }
 
     private mutating func rejectMovement(at angle: Double, time: TimeInterval) {
