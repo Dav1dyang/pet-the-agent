@@ -19,9 +19,14 @@ final class PetController: ObservableObject {
     @Published private(set) var testSecondsRemaining = 0
     @Published private(set) var testWiggles = 0
     @Published private(set) var testOutcome: PetTestOutcome?
+    @Published private(set) var skippedWhileTyping = false
+    @Published private(set) var justReceivedPet = false
 
     @Published var armed = false {
-        didSet { hingeDetector.reset(at: angle) }
+        didSet {
+            hingeDetector.reset(at: angle)
+            skippedWhileTyping = false
+        }
     }
 
     @Published var sensitivity: Double = 0.1 {
@@ -36,6 +41,7 @@ final class PetController: ObservableObject {
     private var hingeDetector = PetGestureDetector(excursionDegrees: 0.1)
     private var lastPermissionCheck = 0.0
     private var testTimer: Timer?
+    private var petFeedbackTimer: Timer?
 
     private lazy var hingeSensor = HingeSensor(
         onAngle: { [weak self] value in self?.receive(angle: value) },
@@ -69,7 +75,7 @@ final class PetController: ObservableObject {
     func startTest() {
         guard hingeAvailable, !testing else { return }
         testing = true
-        testSecondsRemaining = 8
+        testSecondsRemaining = 12
         testWiggles = 0
         testOutcome = nil
         hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
@@ -88,6 +94,11 @@ final class PetController: ObservableObject {
         testTimer = newTimer
     }
 
+    func cancelTest() {
+        guard testing else { return }
+        finishTest(outcome: nil)
+    }
+
     private func finishTest(outcome: PetTestOutcome?) {
         testTimer?.invalidate()
         testTimer = nil
@@ -96,6 +107,7 @@ final class PetController: ObservableObject {
         testWiggles = 0
         testOutcome = outcome
         hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
+        if outcome == .detected { showPetFeedback() }
     }
 
     private func refreshPermissions(at time: TimeInterval) {
@@ -132,11 +144,27 @@ final class PetController: ObservableObject {
     }
 
     private func sendCompliment() {
+        if AppMessenger.isUserTyping {
+            skippedWhileTyping = true
+            return
+        }
         let message = Compliments.random(excluding: lastSent)
         if let app = AppMessenger.send(message) {
+            skippedWhileTyping = false
             lastSent = message
             lastSentApp = app
             sentCount += 1
+            showPetFeedback()
         }
+    }
+
+    private func showPetFeedback() {
+        justReceivedPet = true
+        petFeedbackTimer?.invalidate()
+        let timer = Timer(timeInterval: 1.2, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.justReceivedPet = false }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        petFeedbackTimer = timer
     }
 }

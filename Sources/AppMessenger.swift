@@ -11,6 +11,13 @@ enum AppMessenger {
 
     static var hasAccessibilityAccess: Bool { AXIsProcessTrusted() }
 
+    /// Avoid inserting a compliment into text the person is actively typing.
+    static var isUserTyping: Bool {
+        CGEventSource.secondsSinceLastEventType(
+            .hidSystemState, eventType: .keyDown
+        ) < 1.5
+    }
+
     static func requestAccessibilityAccess() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
@@ -18,7 +25,7 @@ enum AppMessenger {
 
     /// Types one line into the focused input of a supported app, then presses Return.
     static func send(_ message: String) -> SupportedApp? {
-        guard hasAccessibilityAccess, let app = frontmostSupportedApp,
+        guard hasAccessibilityAccess, !isUserTyping, let app = frontmostSupportedApp,
               !message.contains("\n"), !message.contains("\r"),
               let source = CGEventSource(stateID: .hidSystemState) else { return nil }
 

@@ -15,7 +15,7 @@ private final class PetAppDelegate: NSObject, NSApplicationDelegate, NSPopoverDe
     private let controller = PetController()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let popover = NSPopover()
-    private var armedObservation: AnyCancellable?
+    private var iconObservation: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let host = NSHostingController(rootView: PetMenu(controller: controller))
@@ -35,8 +35,11 @@ private final class PetAppDelegate: NSObject, NSApplicationDelegate, NSPopoverDe
             button.action = #selector(togglePopover(_:))
         }
 
-        armedObservation = controller.$armed.sink { [weak self] armed in
-            MainActor.assumeIsolated { self?.updateStatusIcon(armed: armed) }
+        iconObservation = controller.$armed.combineLatest(controller.$justReceivedPet)
+            .sink { [weak self] armed, justReceivedPet in
+                MainActor.assumeIsolated {
+                    self?.updateStatusIcon(armed: armed, justReceivedPet: justReceivedPet)
+                }
         }
     }
 
@@ -55,8 +58,8 @@ private final class PetAppDelegate: NSObject, NSApplicationDelegate, NSPopoverDe
         statusItem.button?.state = .off
     }
 
-    private func updateStatusIcon(armed: Bool) {
-        let symbol = armed ? "pawprint.fill" : "pawprint"
+    private func updateStatusIcon(armed: Bool, justReceivedPet: Bool) {
+        let symbol = justReceivedPet ? "heart.fill" : (armed ? "pawprint.fill" : "pawprint")
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Pet the Agent")
         image?.isTemplate = true
         statusItem.button?.image = image
@@ -95,7 +98,7 @@ private struct PetMenu: View {
             }
 
             HStack {
-                Text("One compliment per pet · 1 second between pets")
+                Text("One compliment per continuous pet")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
@@ -120,7 +123,7 @@ private struct PetMenu: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Pet the Agent")
                     .font(.system(size: 17, weight: .semibold))
-                Text("A little encouragement, two wiggles away")
+                Text("A little encouragement, one pet at a time")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -193,19 +196,23 @@ private struct PetMenu: View {
             .foregroundStyle(.secondary)
 
             Button {
-                controller.startTest()
+                if controller.testing {
+                    controller.cancelTest()
+                } else {
+                    controller.startTest()
+                }
             } label: {
                 Label(controller.testing
-                      ? "Listening… \(controller.testSecondsRemaining)s"
+                      ? "Stop test · \(controller.testSecondsRemaining)s"
                       : "Test a pet",
-                      systemImage: controller.testing ? "waveform" : "hand.tap")
+                      systemImage: controller.testing ? "stop.fill" : "hand.tap")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
-            .disabled(!controller.hingeAvailable || controller.testing)
+            .disabled(!controller.hingeAvailable)
 
-            Text("Rock the screen gently back and forth twice. Testing never sends a message.")
+            Text("Two gentle back-and-forth strokes. It counts while you move, then waits for the screen to rest. Testing never sends.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -241,7 +248,7 @@ private struct PetMenu: View {
                 .controlSize(.regular)
             }
 
-            Text("Focus a chat prompt before petting. In Cursor, the code editor can also receive typing.")
+            Text("Focus an empty chat prompt before petting. It skips a pet while you’re typing. In Cursor, a focused code editor can receive text.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -255,8 +262,8 @@ private struct PetMenu: View {
                 .foregroundStyle(detected ? Color.green : Color.orange)
                 .accessibilityHidden(true)
             Text(detected
-                 ? "Pet detected! That wiggle works. Nothing was sent."
-                 : "No pet detected. Try two quick wiggles or adjust the distance.")
+                 ? "Pet felt! You can keep moving; this stays one pet. Nothing was sent."
+                 : "No pet detected. Try two gentle strokes or adjust the distance.")
                 .font(.caption)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -294,13 +301,17 @@ private struct PetMenu: View {
         }
         if controller.testing {
             if controller.testWiggles == 1 {
-                return ("One wiggle counted", "One more gentle back-and-forth.",
+                return ("One stroke felt", "Keep petting gently for one more stroke.",
                         "waveform", .teal)
             }
-            return ("Listening for a pet", "Make two quick, small back-and-forth wiggles.",
+            return ("Listening for a pet", "Move gently back and forth twice.",
                     "waveform", .teal)
         }
         if controller.armed {
+            if controller.skippedWhileTyping {
+                return ("Pet felt", "Finish typing, then try another pet. Nothing was sent.",
+                        "hand.raised.fill", .orange)
+            }
             return ("Petting is on", "Focus a chat prompt in Warp, Codex, Claude, or Cursor.",
                     "pawprint.fill", .teal)
         }
@@ -308,7 +319,7 @@ private struct PetMenu: View {
             return ("Ready to test", "Allow Accessibility before sending compliments.",
                     "hand.tap.fill", .accentColor)
         }
-        return ("Ready for a pet", "Test two little wiggles, then turn on compliments.",
+        return ("Ready for a pet", "Test two gentle strokes, then turn on compliments.",
                 "checkmark.circle.fill", .green)
     }
 }
