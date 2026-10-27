@@ -50,8 +50,10 @@ struct PetGestureDetector {
                 return false
             }
             let returnDistance = direction * (peak - angle)
-            let closeToStart = abs(angle - anchor) <= max(1.5, excursionDegrees)
-            if returnDistance >= max(1, excursionDegrees * 0.6) && closeToStart {
+            let closeToStart = abs(angle - anchor) <= excursionDegrees * 0.8
+            if time - startedAt >= 0.08,
+               returnDistance >= excursionDegrees * 0.6,
+               closeToStart {
                 cooldownUntil = time + cooldownSeconds
                 reset(at: angle)
                 lastSampleAt = time
@@ -65,7 +67,7 @@ struct PetGestureDetector {
             direction = movement > 0 ? 1 : -1
             self.peak = angle
             startedAt = time
-        } else if abs(movement) < 0.5 {
+        } else if abs(movement) < excursionDegrees * 0.25 {
             self.anchor = angle
         }
         return false

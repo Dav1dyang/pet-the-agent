@@ -34,17 +34,36 @@ private struct PetMenu: View {
 
             Divider()
 
-            HStack {
-                Label("Screen angle", systemImage: "laptopcomputer")
-                Spacer()
-                Text(controller.angle.map { "\(Int($0))°" } ?? "—")
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
+            Picker("Trigger sensor", selection: $controller.triggerSensor) {
+                ForEach(TriggerSensor.allCases) { sensor in
+                    Text(sensor.title).tag(sensor)
+                }
             }
+            .pickerStyle(.segmented)
+
+            if controller.triggerSensor == .hinge {
+                hingeControls
+            } else {
+                motionControls
+            }
+
             Text(controller.status)
                 .font(.subheadline)
-                .foregroundStyle(controller.sensorError == nil ? Color.secondary : Color.red)
+                .foregroundStyle(currentError == nil ? Color.secondary : Color.red)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Button(controller.testing ? "Testing…" : "Test this sensor") {
+                controller.startTest()
+            }
+            .buttonStyle(.bordered)
+            .disabled(controller.testing || (controller.triggerSensor == .hinge && controller.hingeError != nil))
+
+            if let result = controller.testResult {
+                Text(result)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if !controller.accessibilityAllowed {
                 Button("Allow Accessibility…") { controller.requestAccessibility() }
@@ -52,25 +71,11 @@ private struct PetMenu: View {
             }
 
             Toggle("Petting is on", isOn: $controller.armed)
-                .disabled(controller.sensorError != nil || !controller.accessibilityAllowed)
-
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Text("Movement needed")
-                    Spacer()
-                    Text("\(Int(controller.sensitivity))°")
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                }
-                Slider(value: $controller.sensitivity, in: 1...5, step: 1)
-                Text("Move the screen slightly away and back. One message per pet, with a 15-second pause.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                .disabled(!controller.selectedSensorAvailable || !controller.accessibilityAllowed || controller.testing)
 
             Divider()
 
-            Text("Messages go to the focused Warp window and are submitted with Return. Keep a Claude or Codex prompt active there.")
+            Text("One compliment per pet, with a 15-second pause. Messages go to the focused Warp window and are submitted with Return. Keep a Claude or Codex prompt active there.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -93,6 +98,81 @@ private struct PetMenu: View {
             }
         }
         .padding(18)
-        .frame(width: 330)
+        .frame(width: 350)
+    }
+
+    private var hingeControls: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Label("Screen angle", systemImage: "laptopcomputer")
+                Spacer()
+                Text(controller.angle.map { String(format: "%.2f°", $0) } ?? "—")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            if controller.hingeError == nil {
+                Text(controller.hingeResolutionDegrees < 1
+                     ? "Precise hinge readings available (0.01° steps)."
+                     : "This Mac is using whole-degree hinge readings.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Text("Movement needed")
+                Spacer()
+                Text(String(format: "%.1f°", controller.sensitivity))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: $controller.sensitivity,
+                   in: controller.hingeMinimumDegrees...5,
+                   step: controller.hingeResolutionDegrees < 1 ? 0.1 : 1)
+            Text("Gently move the screen out and back. Try 0.1° in Test mode first; tiny readings can include sensor noise.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var motionControls: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Label("Accelerometer", systemImage: "waveform.path")
+                Spacer()
+                Text(controller.motionLive ? "Live" : (controller.motionDeviceFound ? "Found" : "Not found"))
+                    .foregroundStyle(controller.motionLive ? Color.green : Color.secondary)
+            }
+            HStack {
+                Text("Current movement")
+                Spacer()
+                Text(controller.motionActivityG.map { String(format: "%.3f g", $0) } ?? "—")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            if controller.testing {
+                HStack {
+                    Text("Peak during test")
+                    Spacer()
+                    Text(String(format: "%.3f g", controller.motionPeakG))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+            HStack {
+                Text("Movement needed")
+                Spacer()
+                Text(String(format: "%.3f g", controller.motionThresholdG))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: $controller.motionThresholdG, in: 0.005...0.1, step: 0.005)
+            Text("This sensor feels movement of the MacBook body, so a tiny screen-only movement may not register.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var currentError: String? {
+        controller.triggerSensor == .hinge ? controller.hingeError : controller.motionError
     }
 }

@@ -10,6 +10,8 @@ final class HingeSensor {
     private let onError: (String) -> Void
     private var failedReports = 0
     private(set) var error: String?
+    private(set) var resolutionDegrees = 1.0
+    private var reportID: CFIndex = 1
 
     init(onAngle: @escaping (Double) -> Void, onError: @escaping (String) -> Void) {
         self.onAngle = onAngle
@@ -18,17 +20,10 @@ final class HingeSensor {
         let matching: [String: Any] = [
             kIOHIDVendorIDKey as String: 0x05AC,
             kIOHIDProductIDKey as String: 0x8104,
-            "UsagePage": 0x0020,
-            "Usage": 0x008A
+            kIOHIDPrimaryUsagePageKey as String: 0x0020,
+            kIOHIDPrimaryUsageKey as String: 0x008A
         ]
         IOHIDManagerSetDeviceMatching(manager, matching as CFDictionary)
-        let managerResult = IOHIDManagerOpen(manager, 0)
-        guard managerResult == kIOReturnSuccess else {
-            error = managerResult == kIOReturnNotPermitted
-                ? "Sensor access was denied. Allow Input Monitoring in System Settings, then reopen the app."
-                : "Could not open the MacBook sensor manager."
-            return
-        }
         guard let devices = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>,
               let candidate = devices.first(where: {
                   IOHIDDeviceGetProperty($0, kIOHIDProductKey as CFString) as? String == "las"
@@ -43,22 +38,29 @@ final class HingeSensor {
                 : "The lid-angle sensor could not be opened."
             return
         }
+        if Self.readAngle(from: candidate, reportID: 7) != nil {
+            reportID = 7
+            resolutionDegrees = 0.01
+        } else if Self.readAngle(from: candidate, reportID: 1) == nil {
+            IOHIDDeviceClose(candidate, 0)
+            error = "The hinge sensor is present but is not returning angles."
+            return
+        }
         device = candidate
     }
 
     func start() {
         guard device != nil, timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+        let newTimer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
         }
+        RunLoop.main.add(newTimer, forMode: .common)
+        timer = newTimer
     }
 
     private func poll() {
         guard let device else { return }
-        var bytes = [UInt8](repeating: 0, count: 8)
-        var length = CFIndex(bytes.count)
-        let result = IOHIDDeviceGetReport(device, kIOHIDReportTypeFeature, 1, &bytes, &length)
-        guard result == kIOReturnSuccess, length >= 3 else {
+        guard let angle = Self.readAngle(from: device, reportID: reportID) else {
             failedReports += 1
             if failedReports >= 90 {
                 timer?.invalidate()
@@ -70,14 +72,19 @@ final class HingeSensor {
             return
         }
         failedReports = 0
-        let angle = Double(UInt16(bytes[1]) | (UInt16(bytes[2]) << 8))
-        guard (0...180).contains(angle) else { return }
         onAngle(angle)
+    }
+
+    private static func readAngle(from device: IOHIDDevice, reportID: CFIndex) -> Double? {
+        var bytes = [UInt8](repeating: 0, count: 8)
+        var length = CFIndex(bytes.count)
+        let result = IOHIDDeviceGetReport(device, kIOHIDReportTypeFeature, reportID, &bytes, &length)
+        guard result == kIOReturnSuccess, length >= 3 else { return nil }
+        return HingeReportDecoder.degrees(from: Array(bytes.prefix(length)), reportID: Int(reportID))
     }
 
     isolated deinit {
         timer?.invalidate()
         if let device { IOHIDDeviceClose(device, 0) }
-        IOHIDManagerClose(manager, 0)
     }
 }
