@@ -38,9 +38,9 @@ final class PetController: ObservableObject {
         }
     }
 
-    @Published var sensitivity: Double = 0.1 {
+    @Published var sensitivity: Double = 0.03 {
         didSet {
-            UserDefaults.standard.set(sensitivity, forKey: "hingeSensitivityDegreesV2")
+            UserDefaults.standard.set(sensitivity, forKey: "hingeSensitivityDegreesV3")
             hingeDetector.excursionDegrees = sensitivity
             hingeDetector.reset(at: angle)
             liveSequence.reset()
@@ -48,7 +48,7 @@ final class PetController: ObservableObject {
         }
     }
 
-    private var hingeDetector = PetGestureDetector(excursionDegrees: 0.1)
+    private var hingeDetector = PetGestureDetector(excursionDegrees: 0.03)
     private var liveSequence = PettingSequence()
     private var testSequence = PettingSequence()
     private var lastPermissionCheck = 0.0
@@ -69,8 +69,13 @@ final class PetController: ObservableObject {
     )
 
     init() {
-        let saved = UserDefaults.standard.double(forKey: "hingeSensitivityDegreesV2")
-        if (0.1...5).contains(saved) { sensitivity = saved }
+        let saved = UserDefaults.standard.double(forKey: "hingeSensitivityDegreesV3")
+        let previous = UserDefaults.standard.double(forKey: "hingeSensitivityDegreesV2")
+        if (0.02...5).contains(saved) {
+            sensitivity = saved
+        } else if previous > 0.1, previous <= 5 {
+            sensitivity = previous
+        }
         hingeDetector.excursionDegrees = sensitivity
 
         hingeError = hingeSensor.error
@@ -79,7 +84,7 @@ final class PetController: ObservableObject {
         hingeSensor.start()
     }
 
-    var hingeMinimumDegrees: Double { hingeResolutionDegrees < 1 ? 0.1 : 1 }
+    var hingeMinimumDegrees: Double { hingeResolutionDegrees < 1 ? 0.02 : 1 }
     var hingeAvailable: Bool { hingeError == nil && angle != nil }
 
     func requestAccessibility() {

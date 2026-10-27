@@ -21,6 +21,11 @@ enum HingeRecording {
     ) -> HingeCalibration? {
         guard samples.count >= 60 else { return nil }
 
+        if minimumDistance < 1,
+           let rapid = rapidCalibration(from: samples) {
+            return rapid
+        }
+
         // Find real turning points in a lightly smoothed trace. Hysteresis
         // keeps sensor quantization and tiny jitter from becoming strokes.
         let turnDistance = max(0.06, minimumDistance * 0.6)
@@ -91,6 +96,37 @@ enum HingeRecording {
             swingDegrees: swing,
             strokeCount: periods.count
         )
+    }
+
+    private static func rapidCalibration(from samples: [HingeSample]) -> HingeCalibration? {
+        let duration = (samples.last?.seconds ?? 0) - (samples.first?.seconds ?? 0)
+        guard duration >= 5 else { return nil }
+        let requiredEvents = duration >= 10 ? 3 : 2
+        var best: HingeCalibration?
+        for distance in [0.02, 0.03, 0.04, 0.05, 0.06, 0.08] {
+            var detector = RapidPetDetector(distanceDegrees: distance)
+            var periods: [Double] = []
+            var swings: [Double] = []
+            for sample in samples {
+                if detector.consume(angle: sample.angle, at: sample.seconds),
+                   let period = detector.observedCycleSeconds,
+                   let swing = detector.observedSwingDegrees {
+                    periods.append(period)
+                    swings.append(swing)
+                }
+            }
+            guard periods.count >= requiredEvents else { continue }
+            if best == nil || periods.count > best!.strokeCount ||
+                (periods.count == best!.strokeCount && distance > best!.suggestedDistance) {
+                best = HingeCalibration(
+                    suggestedDistance: distance,
+                    strokePeriod: median(periods),
+                    swingDegrees: median(swings),
+                    strokeCount: periods.count
+                )
+            }
+        }
+        return best
     }
 
     static func csv(_ samples: [HingeSample]) -> String {

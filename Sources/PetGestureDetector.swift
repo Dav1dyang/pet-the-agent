@@ -6,6 +6,7 @@ struct PetGestureDetector {
     var excursionDegrees: Double = 2
     private(set) var completedWiggles = 0
     private(set) var isInPet = false
+    private var rapidDetector = RapidPetDetector()
 
     private let maximumGestureSeconds: TimeInterval = 10
     private let trackingPauseSeconds: TimeInterval = 2.2
@@ -39,6 +40,7 @@ struct PetGestureDetector {
     private var lastTriggerAt: TimeInterval?
 
     mutating func reset(at angle: Double? = nil) {
+        rapidDetector.reset(at: angle)
         isInPet = false
         lastSampleAt = nil
         lastMotionAt = nil
@@ -50,6 +52,14 @@ struct PetGestureDetector {
     }
 
     mutating func consume(angle: Double, at time: TimeInterval) -> Bool {
+        if excursionDegrees < 0.1 {
+            rapidDetector.distanceDegrees = excursionDegrees
+            let detected = rapidDetector.consume(angle: angle, at: time)
+            completedWiggles = rapidDetector.completedWiggles
+            isInPet = rapidDetector.isInPet
+            baselineDegrees = rapidDetector.baselineDegrees
+            return detected
+        }
         guard angle.isFinite, (45...165).contains(angle), excursionDegrees > 0 else {
             reset()
             return false

@@ -191,12 +191,12 @@ private struct PetMenu: View {
                 Text("Pet distance")
                     .font(.subheadline.weight(.medium))
                 Spacer()
-                Text(String(format: "%.1f°", controller.sensitivity))
+                Text(String(format: controller.sensitivity < 0.1 ? "%.2f°" : "%.1f°",
+                            controller.sensitivity))
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
                     .monospacedDigit()
             }
-            Slider(value: sensitivityBinding,
-                   in: controller.hingeMinimumDegrees...5)
+            Slider(value: sensitivityBinding, in: 0...1)
                 .tint(.teal)
                 .disabled(!controller.hingeAvailable || controller.testing)
                 .accessibilityLabel("Pet distance")
@@ -225,7 +225,7 @@ private struct PetMenu: View {
             .controlSize(.large)
             .disabled(!controller.hingeAvailable)
 
-            Text("Pet steadily back and forth for a few seconds. Recording lasts 15 seconds, previews the words, and never sends.")
+            Text("Pet steadily back and forth for a few seconds. Tiny, quick pets work at 0.02–0.09°. Recording lasts 15 seconds and never sends.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -292,7 +292,7 @@ private struct PetMenu: View {
                 Label("Your petting rhythm was captured", systemImage: "waveform.path")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.teal)
-                Text(String(format: "About %.1f seconds per back-and-forth · %.2f° swing. Suggested pet distance: %.1f°.",
+                Text(String(format: "About %.1f seconds per back-and-forth · %.2f° swing. Suggested pet distance: %.2f°.",
                             calibration.strokePeriod, calibration.swingDegrees,
                             calibration.suggestedDistance))
                     .font(.caption)
@@ -328,10 +328,20 @@ private struct PetMenu: View {
 
     private var sensitivityBinding: Binding<Double> {
         Binding(
-            get: { controller.sensitivity },
+            get: {
+                let minimum = controller.hingeMinimumDegrees
+                if minimum >= 1 {
+                    return min(1, max(0, (controller.sensitivity - 1) / 4))
+                }
+                return min(1, max(0,
+                                  log(controller.sensitivity / minimum) / log(5 / minimum)))
+            },
             set: { value in
-                let step = controller.hingeResolutionDegrees < 1 ? 0.1 : 1.0
-                let rounded = (value / step).rounded() * step
+                let minimum = controller.hingeMinimumDegrees
+                let distance = minimum >= 1
+                    ? 1 + value * 4 : minimum * pow(5 / minimum, value)
+                let step = minimum >= 1 ? 1.0 : (distance < 0.1 ? 0.01 : 0.1)
+                let rounded = min(5, max(minimum, (distance / step).rounded() * step))
                 if abs(controller.sensitivity - rounded) > 0.0001 {
                     controller.sensitivity = rounded
                 }
