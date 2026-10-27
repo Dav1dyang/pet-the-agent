@@ -40,10 +40,30 @@ final class PetGestureDetectorTests: XCTestCase {
     func testSlowWigglesDoNotTrigger() {
         var detector = PetGestureDetector()
         for (time, angle) in [(0.0, 110.0), (0.2, 112.2), (0.8, 111.9),
-                              (1.4, 110.1), (1.9, 112.1), (2.3, 111.5),
-                              (2.6, 110.0)] {
+                              (1.4, 110.1), (2.1, 112.1), (2.8, 111.5),
+                              (3.3, 110.0)] {
             XCTAssertFalse(detector.consume(angle: angle, at: time))
         }
+    }
+
+    func testOvershootAndImperfectReturnStillCount() {
+        var detector = PetGestureDetector(excursionDegrees: 0.1)
+        XCTAssertFalse(detector.consume(angle: 110.00, at: 1.00))
+        XCTAssertFalse(detector.consume(angle: 111.20, at: 1.15))
+        XCTAssertFalse(detector.consume(angle: 110.07, at: 1.35))
+        XCTAssertEqual(detector.completedWiggles, 1)
+        XCTAssertFalse(detector.consume(angle: 109.32, at: 1.65))
+        XCTAssertTrue(detector.consume(angle: 110.12, at: 1.90))
+    }
+
+    func testGentleWigglesHaveTimeToComplete() {
+        var detector = PetGestureDetector()
+        XCTAssertFalse(detector.consume(angle: 110.0, at: 0.0))
+        XCTAssertFalse(detector.consume(angle: 112.5, at: 0.4))
+        XCTAssertFalse(detector.consume(angle: 110.4, at: 1.0))
+        XCTAssertEqual(detector.completedWiggles, 1)
+        XCTAssertFalse(detector.consume(angle: 112.8, at: 1.8))
+        XCTAssertTrue(detector.consume(angle: 110.6, at: 2.5))
     }
 
     func testTenthDegreePetTriggersWithPreciseReadings() {
@@ -72,10 +92,10 @@ final class PetGestureDetectorTests: XCTestCase {
         XCTAssertTrue(detector.consume(angle: 110.1, at: 1.62))
         XCTAssertFalse(detector.consume(angle: 112.1, at: 2.0))
         XCTAssertFalse(detector.consume(angle: 110.0, at: 2.2))
-        XCTAssertFalse(detector.consume(angle: 110.0, at: 4.7))
-        XCTAssertFalse(detector.consume(angle: 112.1, at: 4.8))
-        XCTAssertFalse(detector.consume(angle: 110.2, at: 5.0))
-        XCTAssertFalse(detector.consume(angle: 112.2, at: 5.15))
-        XCTAssertTrue(detector.consume(angle: 110.1, at: 5.35))
+        XCTAssertFalse(detector.consume(angle: 110.0, at: 2.7))
+        XCTAssertFalse(detector.consume(angle: 112.1, at: 2.8))
+        XCTAssertFalse(detector.consume(angle: 110.2, at: 3.0))
+        XCTAssertFalse(detector.consume(angle: 112.2, at: 3.15))
+        XCTAssertTrue(detector.consume(angle: 110.1, at: 3.35))
     }
 }

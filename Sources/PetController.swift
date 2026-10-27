@@ -17,6 +17,7 @@ final class PetController: ObservableObject {
     @Published private(set) var sentCount = 0
     @Published private(set) var testing = false
     @Published private(set) var testSecondsRemaining = 0
+    @Published private(set) var testWiggles = 0
     @Published private(set) var testOutcome: PetTestOutcome?
 
     @Published var armed = false {
@@ -69,6 +70,7 @@ final class PetController: ObservableObject {
         guard hingeAvailable, !testing else { return }
         testing = true
         testSecondsRemaining = 8
+        testWiggles = 0
         testOutcome = nil
         hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
 
@@ -91,6 +93,7 @@ final class PetController: ObservableObject {
         testTimer = nil
         testing = false
         testSecondsRemaining = 0
+        testWiggles = 0
         testOutcome = outcome
         hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
     }
@@ -109,7 +112,11 @@ final class PetController: ObservableObject {
         refreshPermissions(at: now)
 
         if testing {
-            if hingeDetector.consume(angle: newAngle, at: now) {
+            let detected = hingeDetector.consume(angle: newAngle, at: now)
+            if testWiggles != hingeDetector.completedWiggles {
+                testWiggles = hingeDetector.completedWiggles
+            }
+            if detected {
                 finishTest(outcome: .detected)
             }
             return

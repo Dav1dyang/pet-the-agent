@@ -95,7 +95,7 @@ private struct PetMenu: View {
             }
 
             HStack {
-                Text("One compliment per pet · 3 seconds between pets")
+                Text("One compliment per pet · 1 second between pets")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
@@ -293,6 +293,10 @@ private struct PetMenu: View {
                     "laptopcomputer", .secondary)
         }
         if controller.testing {
+            if controller.testWiggles == 1 {
+                return ("One wiggle counted", "One more gentle back-and-forth.",
+                        "waveform", .teal)
+            }
             return ("Listening for a pet", "Make two quick, small back-and-forth wiggles.",
                     "waveform", .teal)
         }

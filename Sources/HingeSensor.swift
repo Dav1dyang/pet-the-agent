@@ -51,7 +51,7 @@ final class HingeSensor {
 
     func start() {
         guard device != nil, timer == nil else { return }
-        let newTimer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+        let newTimer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
         }
         RunLoop.main.add(newTimer, forMode: .common)
@@ -62,7 +62,7 @@ final class HingeSensor {
         guard let device else { return }
         guard let angle = Self.readAngle(from: device, reportID: reportID) else {
             failedReports += 1
-            if failedReports >= 90 {
+            if failedReports >= 180 {
                 timer?.invalidate()
                 timer = nil
                 let message = "The MacBook sensor stopped returning angles. Reopen the app after checking Input Monitoring."
