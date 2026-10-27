@@ -48,7 +48,7 @@ private struct PetMenu: View {
             HStack {
                 Text("One compliment per pet · 15 seconds between pets")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 Button("Quit") { NSApplication.shared.terminate(nil) }
                     .buttonStyle(.plain)
@@ -64,9 +64,9 @@ private struct PetMenu: View {
         HStack(spacing: 12) {
             Image(systemName: "pawprint.fill")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(.teal)
                 .frame(width: 38, height: 38)
-                .background(Color.mint.gradient, in: RoundedRectangle(cornerRadius: 11))
+                .background(Color.teal.opacity(0.14), in: RoundedRectangle(cornerRadius: 11))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Pet the Agent")
@@ -133,7 +133,7 @@ private struct PetMenu: View {
             Slider(value: $controller.sensitivity,
                    in: controller.hingeMinimumDegrees...5,
                    step: controller.hingeResolutionDegrees < 1 ? 0.1 : 1)
-                .tint(.mint)
+                .tint(.teal)
                 .disabled(!controller.hingeAvailable || controller.testing)
                 .accessibilityLabel("Pet distance")
             HStack {
@@ -142,7 +142,7 @@ private struct PetMenu: View {
                 Text("Bigger movement")
             }
             .font(.caption2)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
 
             Button {
                 controller.startTest()
@@ -179,7 +179,7 @@ private struct PetMenu: View {
                 Spacer()
                 Toggle("Send compliments", isOn: $controller.armed)
                     .labelsHidden()
-                    .tint(.mint)
+                    .tint(.teal)
                     .disabled(!controller.hingeAvailable ||
                               !controller.accessibilityAllowed ||
                               controller.testing)
@@ -233,11 +233,11 @@ private struct PetMenu: View {
         }
         if controller.testing {
             return ("Listening for a pet", "Gently move the screen out and back.",
-                    "waveform", .mint)
+                    "waveform", .teal)
         }
         if controller.armed {
             return ("Petting is on", "Return to your Claude or Codex prompt in Warp.",
-                    "pawprint.fill", .mint)
+                    "pawprint.fill", .teal)
         }
         if !controller.accessibilityAllowed {
             return ("Ready to test", "Allow Accessibility before sending compliments.",
