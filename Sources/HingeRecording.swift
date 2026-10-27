@@ -97,9 +97,12 @@ enum HingeRecording {
         var lines = ["time_seconds,angle_degrees,baseline_degrees,delta_degrees,pet_event"]
         lines.reserveCapacity(samples.count + 1)
         for sample in samples {
-            lines.append(String(format: "%.3f,%.4f,%.4f,%.4f,%d",
-                                sample.seconds, sample.angle, sample.baseline,
-                                sample.angle - sample.baseline, sample.petEvent ? 1 : 0))
+            lines.append(String(
+                format: "%.3f,%.4f,%.4f,%.4f,%d",
+                locale: Locale(identifier: "en_US_POSIX"),
+                arguments: [sample.seconds, sample.angle, sample.baseline,
+                            sample.angle - sample.baseline, sample.petEvent ? 1 : 0]
+            ))
         }
         return lines.joined(separator: "\n") + "\n"
     }

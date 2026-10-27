@@ -29,6 +29,7 @@ struct PetGestureDetector {
     private var strokeTimes: [TimeInterval] = []
     private var strokeExcursions: [Double] = []
     private var lastCompletedStrokeAt: TimeInterval?
+    private var lastStrokePeriod: TimeInterval?
     private var lastSampleAt: TimeInterval?
     private var lastMotionAt: TimeInterval?
     private var motionReference: Double?
@@ -148,15 +149,21 @@ struct PetGestureDetector {
         let wiggleExcursion = abs(peak - anchor)
         self.peak = nil
         direction = 0
-        if let previous = lastCompletedStrokeAt,
-           !(minimumStrokePeriod...maximumStrokePeriod).contains(time - previous) {
+        var strokePeriod = lastCompletedStrokeAt.map { time - $0 }
+        if let period = strokePeriod,
+           !(minimumStrokePeriod...maximumStrokePeriod).contains(period) ||
+           (lastStrokePeriod.map { max(period, $0) / min(period, $0) > maximumPeriodRatio } ?? false) {
             if isInPet {
                 isInPet = false
                 lastTriggerAt = nil
             }
             resetTracking(at: inputAngle)
+            startedAt = time
+            origin = inputAngle
+            strokePeriod = nil
         }
         lastCompletedStrokeAt = time
+        if let strokePeriod { lastStrokePeriod = strokePeriod }
         strokeTimes.append(time)
         strokeExcursions.append(wiggleExcursion)
         completedWiggles = strokeTimes.count
@@ -192,6 +199,7 @@ struct PetGestureDetector {
             (lastTriggerAt.map { time - $0 >= repeatIntervalSeconds } ?? false)
         resetTracking(at: inputAngle)
         lastCompletedStrokeAt = time
+        lastStrokePeriod = strokePeriod
         guard shouldTrigger else { return false }
         isInPet = true
         lastTriggerAt = time
@@ -211,6 +219,7 @@ struct PetGestureDetector {
         strokeTimes.removeAll(keepingCapacity: true)
         strokeExcursions.removeAll(keepingCapacity: true)
         lastCompletedStrokeAt = nil
+        lastStrokePeriod = nil
     }
 
     private mutating func rejectMovement(at angle: Double, time: TimeInterval) {
