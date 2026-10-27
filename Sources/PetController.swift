@@ -20,6 +20,7 @@ final class PetController: ObservableObject {
     @Published private(set) var testWiggles = 0
     @Published private(set) var testOutcome: PetTestOutcome?
     @Published private(set) var skippedWhileTyping = false
+    @Published private(set) var targetAppReady = false
     @Published private(set) var justReceivedPet = false
 
     @Published var armed = false {
@@ -42,6 +43,7 @@ final class PetController: ObservableObject {
     private var lastPermissionCheck = 0.0
     private var testTimer: Timer?
     private var petFeedbackTimer: Timer?
+    private var skipNoticeUntil = 0.0
 
     private lazy var hingeSensor = HingeSensor(
         onAngle: { [weak self] value in self?.receive(angle: value) },
@@ -122,6 +124,13 @@ final class PetController: ObservableObject {
         angle = newAngle
         let now = ProcessInfo.processInfo.systemUptime
         refreshPermissions(at: now)
+        if skippedWhileTyping && now >= skipNoticeUntil {
+            skippedWhileTyping = false
+        }
+        let supportedApp = AppMessenger.frontmostSupportedApp
+        if targetAppReady != (supportedApp != nil) {
+            targetAppReady = supportedApp != nil
+        }
 
         if testing {
             let detected = hingeDetector.consume(angle: newAngle, at: now)
@@ -134,7 +143,7 @@ final class PetController: ObservableObject {
             return
         }
 
-        guard armed, accessibilityAllowed, AppMessenger.frontmostSupportedApp != nil else {
+        guard armed, accessibilityAllowed, supportedApp != nil else {
             hingeDetector.reset(at: newAngle)
             return
         }
@@ -146,6 +155,7 @@ final class PetController: ObservableObject {
     private func sendCompliment() {
         if AppMessenger.isUserTyping {
             skippedWhileTyping = true
+            skipNoticeUntil = ProcessInfo.processInfo.systemUptime + 2.5
             return
         }
         let message = Compliments.random(excluding: lastSent)

@@ -13,9 +13,10 @@ enum AppMessenger {
 
     /// Avoid inserting a compliment into text the person is actively typing.
     static var isUserTyping: Bool {
-        CGEventSource.secondsSinceLastEventType(
+        let elapsed = CGEventSource.secondsSinceLastEventType(
             .hidSystemState, eventType: .keyDown
-        ) < 1.5
+        )
+        return elapsed.isFinite && elapsed >= 0 && elapsed < 1.5
     }
 
     static func requestAccessibilityAccess() {
@@ -27,7 +28,7 @@ enum AppMessenger {
     static func send(_ message: String) -> SupportedApp? {
         guard hasAccessibilityAccess, !isUserTyping, let app = frontmostSupportedApp,
               !message.contains("\n"), !message.contains("\r"),
-              let source = CGEventSource(stateID: .hidSystemState) else { return nil }
+              let source = CGEventSource(stateID: .combinedSessionState) else { return nil }
 
         let characters = Array(message.utf16)
         guard !characters.isEmpty, characters.count < 200,

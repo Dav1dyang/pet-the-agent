@@ -248,7 +248,7 @@ private struct PetMenu: View {
                 .controlSize(.regular)
             }
 
-            Text("Focus an empty chat prompt before petting. It skips a pet while you’re typing. In Cursor, a focused code editor can receive text.")
+            Text("Close this menu and focus an empty chat prompt before petting. A pet just after typing won't send. In Cursor, a focused code editor can receive text.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -309,8 +309,12 @@ private struct PetMenu: View {
         }
         if controller.armed {
             if controller.skippedWhileTyping {
-                return ("Pet felt", "Finish typing, then try another pet. Nothing was sent.",
+                return ("Pet felt", "A key was just pressed, so nothing was sent. Rest, then pet again.",
                         "hand.raised.fill", .orange)
+            }
+            if !controller.targetAppReady {
+                return ("Back to your chat", "Close this menu and focus an empty chat prompt to send.",
+                        "arrow.uturn.forward", .teal)
             }
             return ("Petting is on", "Focus a chat prompt in Warp, Codex, Claude, or Cursor.",
                     "pawprint.fill", .teal)
