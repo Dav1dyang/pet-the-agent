@@ -26,6 +26,16 @@ enum HingeRecording {
             return rapid
         }
 
+        // Broad screen repositioning can make the slower turn finder infer a
+        // large "pet" from the change in center. Do not recommend a distance
+        // from that trace unless the rapid rhythm was actually recognized.
+        if minimumDistance < 1 {
+            let centers = samples.map(\.baseline)
+            if (centers.max() ?? 0) - (centers.min() ?? 0) > 2 {
+                return nil
+            }
+        }
+
         // Find real turning points in a lightly smoothed trace. Hysteresis
         // keeps sensor quantization and tiny jitter from becoming strokes.
         let turnDistance = max(0.06, minimumDistance * 0.6)

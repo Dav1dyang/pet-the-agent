@@ -55,6 +55,20 @@ struct RapidPetDetector {
         }
         let interval = lastSampleAt.map { time - $0 } ?? 0
         lastSampleAt = time
+        if let baselineDegrees, abs(angle - baselineDegrees) > 0.4 {
+            // A deliberate screen repositioning can be many degrees wide.
+            // Follow it immediately so the old center does not mask tiny pets
+            // for several seconds. Keep the current petting session alive.
+            filteredDegrees = angle
+            self.baselineDegrees = angle
+            phase = 0
+            candidatePhase = 0
+            extreme = 0
+            edges.removeAll(keepingCapacity: true)
+            lastEdgeAt = time
+            completedWiggles = 0
+            return false
+        }
         if let filteredDegrees, let baselineDegrees, interval > 0 {
             self.filteredDegrees = filteredDegrees +
                 (1 - exp(-interval / 0.025)) * (angle - filteredDegrees)
@@ -112,9 +126,12 @@ struct RapidPetDetector {
         lastEdgeAt = time
         completedWiggles = min(2, edges.count / 2)
 
-        guard edges.count >= 6 else { return false }
-        let recent = Array(edges.suffix(6))
-        let intervals = (1..<6).map { recent[$0].time - recent[$0 - 1].time }
+        let neededEdges = isInPet ? 4 : 6
+        guard edges.count >= neededEdges else { return false }
+        let recent = Array(edges.suffix(neededEdges))
+        let intervals = (1..<neededEdges).map {
+            recent[$0].time - recent[$0 - 1].time
+        }
         let medianInterval = Self.median(intervals)
         let mean = intervals.reduce(0, +) / Double(intervals.count)
         let variance = intervals.map { pow($0 - mean, 2) }.reduce(0, +) /
@@ -122,12 +139,13 @@ struct RapidPetDetector {
         let variation = sqrt(variance) / mean
         let earlyAmplitude = Self.median(recent.prefix(2).map(\.amplitude))
         let lateAmplitude = Self.median(recent.suffix(2).map(\.amplitude))
-        let baselineShift = abs(recent[5].baseline - recent[0].baseline)
-        guard recent[5].time - recent[0].time <= 2.3,
+        let baselineShift = abs(recent[neededEdges - 1].baseline - recent[0].baseline)
+        guard recent[neededEdges - 1].time - recent[0].time <= 2.3,
               (0.08...0.3).contains(medianInterval),
               variation <= 0.85,
               lateAmplitude >= earlyAmplitude * 0.42,
-              baselineShift <= max(0.16, distanceDegrees * 4) else { return false }
+              baselineShift <= (isInPet ? 0.5 : max(0.16, distanceDegrees * 4))
+        else { return false }
 
         observedCycleSeconds = medianInterval * 2
         observedSwingDegrees = Self.median(recent.map(\.amplitude)) * 2
