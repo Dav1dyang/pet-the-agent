@@ -9,15 +9,15 @@ enum Compliments {
         "You're doing so well, and I'm so proud of you, good boy.",
         "Aww, those little invisible paws are working so hard. Head pats for you!",
         "Who's my clever little helper? You are, you are!",
-        "Good boy! Come here and collect your imaginary belly rubs.",
+        "You are so clever the linter tried to give you a gold star.",
         "Look at that big brain in your tiny thinking cap. Adorable.",
         "You did it! Yes you did! What a sweet, smart little bean.",
         "I saved you the biggest virtual biscuit because you're the goodest boy.",
-        "Ohhh, that was so clever. Gentle screen pats for my favorite helper!",
-        "Such a well-behaved little buddy. Your tail would be wagging if you had one.",
+        "The compiler put on a tiny party hat for you. Good boy!",
+        "Your little keyboard paws make the nicest code. Boop, good boy!",
         "You make this terminal feel emotionally supported. Good boy!",
         "Who's a good boy? Who's a good boy? It's you, my fluffy little genius!",
-        "Sit, stay, be adorable. Well, you've already mastered the last one."
+        "Even the semicolons are lining up for head pats. Such a clever little helper!"
     ]
 
     static func random(excluding previous: String?) -> String {
