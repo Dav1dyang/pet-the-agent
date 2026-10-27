@@ -18,6 +18,7 @@ final class PetController: ObservableObject {
     @Published private(set) var testing = false
     @Published private(set) var testSecondsRemaining = 0
     @Published private(set) var testWiggles = 0
+    @Published private(set) var testPetCount = 0
     @Published private(set) var testOutcome: PetTestOutcome?
     @Published private(set) var skippedWhileTyping = false
     @Published private(set) var targetAppReady = false
@@ -79,6 +80,7 @@ final class PetController: ObservableObject {
         testing = true
         testSecondsRemaining = 12
         testWiggles = 0
+        testPetCount = 0
         testOutcome = nil
         hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
 
@@ -88,7 +90,7 @@ final class PetController: ObservableObject {
                 guard let self, self.testing else { return }
                 self.testSecondsRemaining -= 1
                 if self.testSecondsRemaining == 0 {
-                    self.finishTest(outcome: .missed)
+                    self.finishTest(outcome: self.testPetCount > 0 ? .detected : .missed)
                 }
             }
         }
@@ -98,7 +100,7 @@ final class PetController: ObservableObject {
 
     func cancelTest() {
         guard testing else { return }
-        finishTest(outcome: nil)
+        finishTest(outcome: testPetCount > 0 ? .detected : nil)
     }
 
     private func finishTest(outcome: PetTestOutcome?) {
@@ -109,7 +111,6 @@ final class PetController: ObservableObject {
         testWiggles = 0
         testOutcome = outcome
         hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
-        if outcome == .detected { showPetFeedback() }
     }
 
     private func refreshPermissions(at time: TimeInterval) {
@@ -138,7 +139,8 @@ final class PetController: ObservableObject {
                 testWiggles = hingeDetector.completedWiggles
             }
             if detected {
-                finishTest(outcome: .detected)
+                testPetCount += 1
+                showPetFeedback()
             }
             return
         }

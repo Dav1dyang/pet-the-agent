@@ -1,7 +1,7 @@
 import Foundation
 
-/// Two small out-and-back strokes start a pet. The rest of that continuous
-/// movement belongs to the same pet, even if the screen keeps moving.
+/// Two small out-and-back strokes start a pet. Further strokes can earn
+/// another compliment after a short interval while the movement continues.
 struct PetGestureDetector {
     var excursionDegrees: Double = 2
     private(set) var completedWiggles = 0
@@ -10,6 +10,7 @@ struct PetGestureDetector {
     private let maximumGestureSeconds: TimeInterval = 10
     private let trackingPauseSeconds: TimeInterval = 2.2
     private let petRestSeconds: TimeInterval = 1.5
+    private let repeatIntervalSeconds: TimeInterval = 2.5
 
     private var anchor: Double?
     private var origin: Double?
@@ -20,12 +21,14 @@ struct PetGestureDetector {
     private var lastMotionAt: TimeInterval?
     private var motionReference: Double?
     private var suppressedUntil = 0.0
+    private var lastTriggerAt: TimeInterval?
 
     mutating func reset(at angle: Double? = nil) {
         isInPet = false
         lastSampleAt = nil
         lastMotionAt = nil
         motionReference = angle
+        lastTriggerAt = nil
         resetTracking(at: angle)
     }
 
@@ -60,9 +63,10 @@ struct PetGestureDetector {
         if isInPet {
             if let lastMotionAt, time - lastMotionAt >= petRestSeconds {
                 isInPet = false
+                lastTriggerAt = nil
                 resetTracking(at: angle)
+                return false
             }
-            return false
         }
 
         if time < suppressedUntil { return false }
@@ -104,7 +108,8 @@ struct PetGestureDetector {
         completedWiggles += 1
         self.peak = nil
         direction = 0
-        guard completedWiggles == 2 else {
+        let requiredWiggles = isInPet ? 1 : 2
+        guard completedWiggles == requiredWiggles else {
             self.anchor = angle
             return false
         }
@@ -113,10 +118,14 @@ struct PetGestureDetector {
             return false
         }
 
+        let shouldTrigger = !isInPet ||
+            (lastTriggerAt.map { time - $0 >= repeatIntervalSeconds } ?? false)
+        resetTracking(at: angle)
+        guard shouldTrigger else { return false }
         isInPet = true
+        lastTriggerAt = time
         lastMotionAt = time
         motionReference = angle
-        resetTracking(at: angle)
         return true
     }
 

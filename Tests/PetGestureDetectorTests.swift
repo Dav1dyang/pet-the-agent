@@ -101,18 +101,80 @@ final class PetGestureDetectorTests: XCTestCase {
         XCTAssertTrue(detector.isInPet)
     }
 
-    func testContinuousSensorSamplesStayOnePet() {
+    func testContinuousPetRepeatsOnlyAfterMoreStrokesAndShortInterval() {
         var detector = PetGestureDetector(excursionDegrees: 0.1)
-        var detections = 0
+        var detectionTimes: [Double] = []
         for sample in 0...1200 {
             let time = Double(sample) / 60
+            let angle = 110 + 0.15 * sin(time * 2 * .pi / 1.3)
+            if detector.consume(angle: angle, at: time) {
+                detectionTimes.append(time)
+            }
+        }
+        XCTAssertGreaterThanOrEqual(detectionTimes.count, 3)
+        for pair in zip(detectionTimes, detectionTimes.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(pair.1 - pair.0, 2.5)
+        }
+        XCTAssertTrue(detector.isInPet)
+    }
+
+    func testSlowContinuousPetRepeatsDuringTwelveSecondTest() {
+        var detector = PetGestureDetector(excursionDegrees: 0.1)
+        var detectionTimes: [Double] = []
+        for sample in 0...720 {
+            let time = Double(sample) / 60
             let angle = 110 + 0.15 * sin(time * 2 * .pi / 3)
+            if detector.consume(angle: angle, at: time) {
+                detectionTimes.append(time)
+            }
+        }
+        XCTAssertGreaterThanOrEqual(detectionTimes.count, 2)
+        XCTAssertGreaterThanOrEqual(detectionTimes[1] - detectionTimes[0], 2.5)
+    }
+
+    func testStillScreenDoesNotSendAnotherCompliment() {
+        var detector = PetGestureDetector(excursionDegrees: 0.1)
+        var detections = 0
+        for sample in 0...600 {
+            let time = Double(sample) / 60
+            let angle = time < 3
+                ? 110 + 0.15 * sin(time * 2 * .pi / 1.3)
+                : 110.0
             if detector.consume(angle: angle, at: time) {
                 detections += 1
             }
         }
         XCTAssertEqual(detections, 1)
-        XCTAssertTrue(detector.isInPet)
+        XCTAssertFalse(detector.isInPet)
+    }
+
+    func testEarlyExtraStrokeDoesNotQueueALaterSend() {
+        var detector = PetGestureDetector()
+        for (time, angle) in [(1.0, 110.0), (1.1, 112.1), (1.28, 110.2),
+                              (1.42, 112.2)] {
+            XCTAssertFalse(detector.consume(angle: angle, at: time))
+        }
+        XCTAssertTrue(detector.consume(angle: 110.1, at: 1.62))
+        XCTAssertFalse(detector.consume(angle: 112.1, at: 1.8))
+        XCTAssertFalse(detector.consume(angle: 110.1, at: 2.0))
+        for sample in 21...60 {
+            XCTAssertFalse(detector.consume(angle: 110.1, at: Double(sample) / 10))
+        }
+    }
+
+    func testOneWayAdjustmentAfterPetDoesNotRepeat() {
+        var detector = PetGestureDetector(excursionDegrees: 0.1)
+        var detections = 0
+        for sample in 0...540 {
+            let time = Double(sample) / 60
+            let angle = time < 3
+                ? 110 + 0.15 * sin(time * 2 * .pi / 1.3)
+                : 110 + (time - 3) * 0.8
+            if detector.consume(angle: angle, at: time) {
+                detections += 1
+            }
+        }
+        XCTAssertEqual(detections, 1)
     }
 
     func testContinuousScreenAdjustmentDoesNotBecomePet() {

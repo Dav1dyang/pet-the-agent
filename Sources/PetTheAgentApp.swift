@@ -98,7 +98,7 @@ private struct PetMenu: View {
             }
 
             HStack {
-                Text("One compliment per continuous pet")
+                Text("More strokes, more praise · at least 2.5s apart")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
@@ -212,7 +212,7 @@ private struct PetMenu: View {
             .controlSize(.large)
             .disabled(!controller.hingeAvailable)
 
-            Text("Two gentle back-and-forth strokes. It counts while you move, then waits for the screen to rest. Testing never sends.")
+            Text("Two gentle strokes start a pet. Keep moving for more praise after a short pause. The test counts pets but never sends.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -262,7 +262,7 @@ private struct PetMenu: View {
                 .foregroundStyle(detected ? Color.green : Color.orange)
                 .accessibilityHidden(true)
             Text(detected
-                 ? "Pet felt! You can keep moving; this stays one pet. Nothing was sent."
+                 ? "\(controller.testPetCount) \(controller.testPetCount == 1 ? "pet" : "pets") felt. Nothing was sent."
                  : "No pet detected. Try two gentle strokes or adjust the distance.")
                 .font(.caption)
                 .fixedSize(horizontal: false, vertical: true)
@@ -300,6 +300,11 @@ private struct PetMenu: View {
                     "laptopcomputer", .secondary)
         }
         if controller.testing {
+            if controller.testPetCount > 0 {
+                return ("\(controller.testPetCount) \(controller.testPetCount == 1 ? "pet" : "pets") felt",
+                        "Keep petting for another. At least 2.5 seconds between pets.",
+                        "heart.fill", .teal)
+            }
             if controller.testWiggles == 1 {
                 return ("One stroke felt", "Keep petting gently for one more stroke.",
                         "waveform", .teal)
@@ -309,7 +314,7 @@ private struct PetMenu: View {
         }
         if controller.armed {
             if controller.skippedWhileTyping {
-                return ("Pet felt", "A key was just pressed, so nothing was sent. Rest, then pet again.",
+                return ("Pet felt", "A key was just pressed, so nothing was sent. Keep petting or rest and try again.",
                         "hand.raised.fill", .orange)
             }
             if !controller.targetAppReady {
