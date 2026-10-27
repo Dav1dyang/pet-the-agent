@@ -3,7 +3,7 @@ import Foundation
 /// Recognizes one small out-and-back lid movement. Times are monotonic seconds.
 struct PetGestureDetector {
     var excursionDegrees: Double = 2
-    var cooldownSeconds: TimeInterval = 15
+    var cooldownSeconds: TimeInterval = 3
 
     private var anchor: Double?
     private var peak: Double?

@@ -45,4 +45,16 @@ final class PetGestureDetectorTests: XCTestCase {
             XCTAssertFalse(detector.consume(angle: angle, at: Double(index) * 0.1))
         }
     }
+
+    func testAnotherPetWorksAfterShortCooldown() {
+        var detector = PetGestureDetector()
+        XCTAssertFalse(detector.consume(angle: 110, at: 1.0))
+        XCTAssertFalse(detector.consume(angle: 113, at: 1.2))
+        XCTAssertTrue(detector.consume(angle: 110, at: 1.4))
+        XCTAssertFalse(detector.consume(angle: 113, at: 2.0))
+        XCTAssertFalse(detector.consume(angle: 110, at: 2.2))
+        XCTAssertFalse(detector.consume(angle: 110, at: 4.5))
+        XCTAssertFalse(detector.consume(angle: 113, at: 4.6))
+        XCTAssertTrue(detector.consume(angle: 110, at: 4.8))
+    }
 }

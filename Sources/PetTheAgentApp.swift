@@ -46,7 +46,7 @@ private struct PetMenu: View {
             }
 
             HStack {
-                Text("One compliment per pet · 15 seconds between pets")
+                Text("One compliment per pet · 3 seconds between pets")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
