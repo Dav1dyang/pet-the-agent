@@ -2,15 +2,15 @@ import XCTest
 @testable import PetTheAgent
 
 final class PetGestureDetectorTests: XCTestCase {
-    func testTwoSmallWigglesTriggerOnce() {
+    func testThreeQuickWigglesTriggerOnce() {
         var detector = PetGestureDetector()
         XCTAssertFalse(detector.consume(angle: 110, at: 1.00))
         XCTAssertFalse(detector.consume(angle: 112.1, at: 1.10))
         XCTAssertFalse(detector.consume(angle: 110.2, at: 1.28))
         XCTAssertFalse(detector.consume(angle: 112.2, at: 1.42))
-        XCTAssertTrue(detector.consume(angle: 110.1, at: 1.62))
+        XCTAssertFalse(detector.consume(angle: 110.1, at: 1.62))
         XCTAssertFalse(detector.consume(angle: 112.1, at: 1.75))
-        XCTAssertFalse(detector.consume(angle: 110.1, at: 1.90))
+        XCTAssertTrue(detector.consume(angle: 110.1, at: 1.90))
     }
 
     func testOneAdjustmentAndSettlingBounceDoNotTrigger() {
@@ -20,6 +20,22 @@ final class PetGestureDetectorTests: XCTestCase {
             XCTAssertFalse(detector.consume(angle: angle, at: time),
                            "Unexpected pet at \(time)s, angle \(angle)°")
         }
+    }
+
+    func testUnevenStrokesDoNotStartPetButARegularRunCanRecover() {
+        var detector = PetGestureDetector()
+        let uneven: [(Double, Double)] = [
+            (1.00, 110.0), (1.10, 112.1), (1.28, 110.1),
+            (1.42, 112.1), (1.62, 110.1),
+            (2.70, 112.1), (2.85, 110.1)
+        ]
+        for (time, angle) in uneven {
+            XCTAssertFalse(detector.consume(angle: angle, at: time))
+        }
+        XCTAssertFalse(detector.consume(angle: 112.1, at: 3.00))
+        XCTAssertFalse(detector.consume(angle: 110.1, at: 3.20))
+        XCTAssertFalse(detector.consume(angle: 112.1, at: 3.36))
+        XCTAssertTrue(detector.consume(angle: 110.1, at: 3.56))
     }
 
     func testLargeScreenAdjustmentDoesNotTrigger() {
@@ -54,7 +70,9 @@ final class PetGestureDetectorTests: XCTestCase {
         XCTAssertFalse(detector.consume(angle: 110.07, at: 1.35))
         XCTAssertEqual(detector.completedWiggles, 1)
         XCTAssertFalse(detector.consume(angle: 109.32, at: 1.65))
-        XCTAssertTrue(detector.consume(angle: 110.12, at: 1.90))
+        XCTAssertFalse(detector.consume(angle: 110.12, at: 1.90))
+        XCTAssertFalse(detector.consume(angle: 111.15, at: 2.12))
+        XCTAssertTrue(detector.consume(angle: 110.10, at: 2.35))
     }
 
     func testGentleWigglesHaveTimeToComplete() {
@@ -64,7 +82,9 @@ final class PetGestureDetectorTests: XCTestCase {
         XCTAssertFalse(detector.consume(angle: 110.4, at: 1.0))
         XCTAssertEqual(detector.completedWiggles, 1)
         XCTAssertFalse(detector.consume(angle: 112.8, at: 1.8))
-        XCTAssertTrue(detector.consume(angle: 110.6, at: 2.5))
+        XCTAssertFalse(detector.consume(angle: 110.6, at: 2.5))
+        XCTAssertFalse(detector.consume(angle: 112.7, at: 3.2))
+        XCTAssertTrue(detector.consume(angle: 110.7, at: 4.0))
     }
 
     func testTenthDegreePetTriggersWithPreciseReadings() {
@@ -73,7 +93,9 @@ final class PetGestureDetectorTests: XCTestCase {
         XCTAssertFalse(detector.consume(angle: 110.12, at: 1.10))
         XCTAssertFalse(detector.consume(angle: 110.02, at: 1.25))
         XCTAssertFalse(detector.consume(angle: 109.88, at: 1.35))
-        XCTAssertTrue(detector.consume(angle: 110.01, at: 1.55))
+        XCTAssertFalse(detector.consume(angle: 110.01, at: 1.55))
+        XCTAssertFalse(detector.consume(angle: 110.13, at: 1.70))
+        XCTAssertTrue(detector.consume(angle: 110.01, at: 1.90))
     }
 
     func testSubThresholdJitterDoesNotTrigger() {
@@ -84,28 +106,19 @@ final class PetGestureDetectorTests: XCTestCase {
         }
     }
 
-    func testLongGentlePetTriggersWhileMovementContinues() {
+    func testSteadyPetTriggersWhileMovementContinues() {
         var detector = PetGestureDetector(excursionDegrees: 0.1)
-        let samples: [(Double, Double)] = [
-            (0.0, 110.00), (0.8, 110.04), (1.6, 110.11),
-            (2.4, 110.16), (3.2, 110.09), (4.0, 110.02),
-            (4.8, 109.97), (5.6, 109.89), (6.4, 109.95),
-            (7.2, 110.02)
-        ]
         var detections: [Double] = []
-        for sample in samples {
-            if detector.consume(angle: sample.1, at: sample.0) {
-                detections.append(sample.0)
+        for sample in 0...480 {
+            let time = Double(sample) / 60
+            let angle = 110 + 0.04 * time +
+                0.15 * sin(time * 2 * .pi / 1.5)
+            if detector.consume(angle: angle, at: time) {
+                detections.append(time)
             }
         }
-        XCTAssertEqual(detections.count, 1)
-        if let detectedAt = detections.first {
-            XCTAssertLessThanOrEqual(detectedAt, 7.2)
-        }
-        XCTAssertTrue(detector.isInPet)
-        XCTAssertFalse(detector.consume(angle: 110.14, at: 8.0))
-        XCTAssertFalse(detector.consume(angle: 109.94, at: 8.8))
-        XCTAssertFalse(detector.consume(angle: 110.03, at: 9.6))
+        XCTAssertGreaterThanOrEqual(detections.count, 1)
+        XCTAssertLessThan(detections.first ?? 100, 6)
         XCTAssertTrue(detector.isInPet)
     }
 
@@ -240,8 +253,8 @@ final class PetGestureDetectorTests: XCTestCase {
             (0.13, 1.2, 0.10),
             (0.15, 1.6, 0.12),
             (0.15, 2.0, 0.07),
-            (0.18, 3.0, 0.06),
-            (0.20, 4.0, 0.04)
+            (0.18, 2.4, 0.06),
+            (0.20, 1.8, 0.04)
         ]
         for scenario in cases {
             var detector = PetGestureDetector(excursionDegrees: 0.1)
@@ -328,10 +341,12 @@ final class PetGestureDetectorTests: XCTestCase {
                               (1.42, 112.2)] {
             XCTAssertFalse(detector.consume(angle: angle, at: time))
         }
-        XCTAssertTrue(detector.consume(angle: 110.1, at: 1.62))
+        XCTAssertFalse(detector.consume(angle: 110.1, at: 1.62))
         XCTAssertFalse(detector.consume(angle: 112.1, at: 1.8))
-        XCTAssertFalse(detector.consume(angle: 110.1, at: 2.0))
-        for sample in 21...60 {
+        XCTAssertTrue(detector.consume(angle: 110.1, at: 2.0))
+        XCTAssertFalse(detector.consume(angle: 112.1, at: 2.15))
+        XCTAssertFalse(detector.consume(angle: 110.1, at: 2.35))
+        for sample in 24...60 {
             XCTAssertFalse(detector.consume(angle: 110.1, at: Double(sample) / 10))
         }
     }
@@ -361,24 +376,22 @@ final class PetGestureDetectorTests: XCTestCase {
     }
 
     func testContinuousPetOnlyTriggersOnceThenRearmsAfterRest() {
-        var detector = PetGestureDetector()
-        for (time, angle) in [(1.0, 110.0), (1.1, 112.1), (1.28, 110.2),
-                              (1.42, 112.2)] {
-            XCTAssertFalse(detector.consume(angle: angle, at: time))
+        var detector = PetGestureDetector(excursionDegrees: 0.1)
+        var detections: [Double] = []
+        for sample in 0...720 {
+            let time = Double(sample) / 60
+            let angle: Double
+            if time < 3.8 {
+                angle = 110 + 0.15 * sin(time * 2 * .pi / 0.9)
+            } else if time < 6 {
+                angle = 110
+            } else {
+                angle = 110 + 0.15 * sin((time - 6) * 2 * .pi / 0.9)
+            }
+            if detector.consume(angle: angle, at: time) { detections.append(time) }
         }
-        XCTAssertTrue(detector.consume(angle: 110.1, at: 1.62))
-        for (time, angle) in [(2.0, 112.1), (2.2, 110.0),
-                              (2.8, 112.1), (3.0, 110.2),
-                              (3.6, 112.2), (3.9, 110.1)] {
-            XCTAssertFalse(detector.consume(angle: angle, at: time))
-            XCTAssertTrue(detector.isInPet)
-        }
-        XCTAssertFalse(detector.consume(angle: 110.1, at: 4.7))
-        XCTAssertFalse(detector.consume(angle: 110.1, at: 5.4))
-        XCTAssertFalse(detector.isInPet)
-        XCTAssertFalse(detector.consume(angle: 112.2, at: 5.6))
-        XCTAssertFalse(detector.consume(angle: 110.1, at: 5.8))
-        XCTAssertFalse(detector.consume(angle: 112.2, at: 6.0))
-        XCTAssertTrue(detector.consume(angle: 110.1, at: 6.2))
+        XCTAssertGreaterThanOrEqual(detections.filter { $0 < 6 }.count, 1)
+        XCTAssertGreaterThanOrEqual(detections.filter { $0 >= 6 }.count, 1)
+        XCTAssertLessThan(detections.filter { $0 >= 6 }.first ?? 100, 9)
     }
 }

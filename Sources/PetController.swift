@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import UniformTypeIdentifiers
 
 enum PetTestOutcome: Equatable {
     case detected
@@ -22,6 +23,9 @@ final class PetController: ObservableObject {
     @Published private(set) var testPetCount = 0
     @Published private(set) var testPhrase: String?
     @Published private(set) var testOutcome: PetTestOutcome?
+    @Published private(set) var calibration: HingeCalibration?
+    @Published private(set) var hasRecording = false
+    @Published private(set) var recordingError: String?
     @Published private(set) var skippedWhileTyping = false
     @Published private(set) var targetAppReady = false
     @Published private(set) var justReceivedPet = false
@@ -51,6 +55,8 @@ final class PetController: ObservableObject {
     private var testTimer: Timer?
     private var petFeedbackTimer: Timer?
     private var skipNoticeUntil = 0.0
+    private var testStartedAt = 0.0
+    private var testSamples: [HingeSample] = []
 
     private lazy var hingeSensor = HingeSensor(
         onAngle: { [weak self] value in self?.receive(angle: value) },
@@ -84,11 +90,16 @@ final class PetController: ObservableObject {
     func startTest() {
         guard hingeAvailable, !testing else { return }
         testing = true
-        testSecondsRemaining = 12
+        testSecondsRemaining = 15
         testWiggles = 0
         testPetCount = 0
         testPhrase = nil
         testOutcome = nil
+        calibration = nil
+        hasRecording = false
+        recordingError = nil
+        testSamples.removeAll(keepingCapacity: true)
+        testStartedAt = ProcessInfo.processInfo.systemUptime
         hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
         calibratedCenter = angle
         liveSequence.reset()
@@ -120,8 +131,35 @@ final class PetController: ObservableObject {
         testSecondsRemaining = 0
         testWiggles = 0
         testOutcome = outcome
+        hasRecording = !testSamples.isEmpty
+        calibration = HingeRecording.calibration(
+            from: testSamples, minimumDistance: hingeMinimumDegrees
+        )
         hingeDetector = PetGestureDetector(excursionDegrees: sensitivity)
         liveSequence.reset()
+    }
+
+    func useSuggestedDistance() {
+        guard let calibration else { return }
+        sensitivity = calibration.suggestedDistance
+    }
+
+    func saveRecording() {
+        guard hasRecording else { return }
+        let panel = NSSavePanel()
+        panel.title = "Save hinge recording"
+        panel.nameFieldStringValue = "Pet the Agent hinge recording.csv"
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try HingeRecording.csv(testSamples).write(
+                to: url, atomically: true, encoding: .utf8
+            )
+            recordingError = nil
+        } catch {
+            recordingError = "Couldn't save the recording. Please try another location."
+        }
     }
 
     private func refreshPermissions(at time: TimeInterval) {
@@ -147,6 +185,12 @@ final class PetController: ObservableObject {
         if testing {
             let wasPetting = hingeDetector.isInPet
             let detected = hingeDetector.consume(angle: newAngle, at: now)
+            testSamples.append(HingeSample(
+                seconds: now - testStartedAt,
+                angle: newAngle,
+                baseline: hingeDetector.baselineDegrees ?? newAngle,
+                petEvent: detected
+            ))
             calibratedCenter = hingeDetector.baselineDegrees
             if wasPetting && !hingeDetector.isInPet { testSequence.reset() }
             if testWiggles != hingeDetector.completedWiggles {

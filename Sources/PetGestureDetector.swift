@@ -1,7 +1,7 @@
 import Foundation
 
-/// Two small out-and-back strokes start a pet. Further strokes can earn
-/// another compliment after a short interval while the movement continues.
+/// A short, regular run of out-and-back strokes starts a pet. Continued
+/// rhythmic strokes can earn another compliment after a short interval.
 struct PetGestureDetector {
     var excursionDegrees: Double = 2
     private(set) var completedWiggles = 0
@@ -16,6 +16,9 @@ struct PetGestureDetector {
     }
     private let baselineResponseSeconds: TimeInterval = 0.45
     private let minimumReversalSeconds: TimeInterval = 0.12
+    private let minimumStrokePeriod: TimeInterval = 0.26
+    private let maximumStrokePeriod: TimeInterval = 1.6
+    private let maximumPeriodRatio = 1.8
 
     private var anchor: Double?
     private var origin: Double?
@@ -23,7 +26,9 @@ struct PetGestureDetector {
     private var peakAt = 0.0
     private var direction = 0.0
     private var startedAt = 0.0
-    private var firstWiggleExcursion = 0.0
+    private var strokeTimes: [TimeInterval] = []
+    private var strokeExcursions: [Double] = []
+    private var lastCompletedStrokeAt: TimeInterval?
     private var lastSampleAt: TimeInterval?
     private var lastMotionAt: TimeInterval?
     private var motionReference: Double?
@@ -140,28 +145,53 @@ struct PetGestureDetector {
               centerDistance <= excursionDegrees * 0.9,
               time - peakAt >= minimumReversalSeconds else { return false }
 
-        completedWiggles += 1
         let wiggleExcursion = abs(peak - anchor)
         self.peak = nil
         direction = 0
-        let requiredWiggles = isInPet ? 1 : 2
-        guard completedWiggles == requiredWiggles else {
-            firstWiggleExcursion = wiggleExcursion
+        if let previous = lastCompletedStrokeAt,
+           !(minimumStrokePeriod...maximumStrokePeriod).contains(time - previous) {
+            if isInPet {
+                isInPet = false
+                lastTriggerAt = nil
+            }
+            resetTracking(at: inputAngle)
+        }
+        lastCompletedStrokeAt = time
+        strokeTimes.append(time)
+        strokeExcursions.append(wiggleExcursion)
+        completedWiggles = strokeTimes.count
+
+        if !isInPet && completedWiggles < 3 {
             self.anchor = inputAngle
             return false
         }
-        if !isInPet && wiggleExcursion < firstWiggleExcursion * 0.35 {
-            rejectMovement(at: inputAngle, time: time)
-            return false
-        }
-        guard time - startedAt >= 0.18 else {
-            rejectMovement(at: inputAngle, time: time)
-            return false
+
+        if !isInPet {
+            let firstPeriod = strokeTimes[1] - strokeTimes[0]
+            let secondPeriod = strokeTimes[2] - strokeTimes[1]
+            let periodRatio = max(firstPeriod, secondPeriod) /
+                min(firstPeriod, secondPeriod)
+            let excursionRatio = (strokeExcursions.min() ?? 0) /
+                (strokeExcursions.max() ?? 1)
+            guard periodRatio <= maximumPeriodRatio,
+                  excursionRatio >= 0.35,
+                  time - startedAt >= 0.5 else {
+                // Keep the most recent stroke as the start of a new attempt.
+                resetTracking(at: inputAngle)
+                strokeTimes = [time]
+                strokeExcursions = [wiggleExcursion]
+                completedWiggles = 1
+                lastCompletedStrokeAt = time
+                startedAt = time
+                origin = inputAngle
+                return false
+            }
         }
 
         let shouldTrigger = !isInPet ||
             (lastTriggerAt.map { time - $0 >= repeatIntervalSeconds } ?? false)
         resetTracking(at: inputAngle)
+        lastCompletedStrokeAt = time
         guard shouldTrigger else { return false }
         isInPet = true
         lastTriggerAt = time
@@ -178,7 +208,9 @@ struct PetGestureDetector {
         direction = 0
         completedWiggles = 0
         startedAt = 0
-        firstWiggleExcursion = 0
+        strokeTimes.removeAll(keepingCapacity: true)
+        strokeExcursions.removeAll(keepingCapacity: true)
+        lastCompletedStrokeAt = nil
     }
 
     private mutating func rejectMovement(at angle: Double, time: TimeInterval) {

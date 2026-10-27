@@ -78,6 +78,7 @@ private struct PetMenu: View {
             if let outcome = controller.testOutcome {
                 testResult(outcome)
             }
+            if controller.hasRecording { recordingCard }
 
             Divider()
             sendingControls
@@ -215,8 +216,8 @@ private struct PetMenu: View {
                 }
             } label: {
                 Label(controller.testing
-                      ? "Stop test · \(controller.testSecondsRemaining)s"
-                      : "Test a pet",
+                      ? "Finish recording · \(controller.testSecondsRemaining)s"
+                      : "Record & tune a pet",
                       systemImage: controller.testing ? "stop.fill" : "hand.tap")
                     .frame(maxWidth: .infinity)
             }
@@ -224,7 +225,7 @@ private struct PetMenu: View {
             .controlSize(.large)
             .disabled(!controller.hingeAvailable)
 
-            Text("Two gentle strokes start a pet. Keep moving to hear the next line. Testing previews the words but never sends.")
+            Text("Pet steadily back and forth for a few seconds. Recording lasts 15 seconds, previews the words, and never sends.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -275,7 +276,7 @@ private struct PetMenu: View {
                 .accessibilityHidden(true)
             Text(detected
                  ? "\(controller.testPetCount) \(controller.testPetCount == 1 ? "pet" : "pets") felt. Last line: “\(controller.testPhrase ?? "")” Nothing was sent."
-                 : "No pet detected. Try two gentle strokes or adjust the distance.")
+                 : "No pet detected. Try a steady, quick back-and-forth rhythm or adjust the distance.")
                 .font(.caption)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -283,6 +284,41 @@ private struct PetMenu: View {
         .padding(10)
         .background((detected ? Color.green : Color.orange).opacity(0.09),
                     in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var recordingCard: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            if let calibration = controller.calibration {
+                Label("Your petting rhythm was captured", systemImage: "waveform.path")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.teal)
+                Text(String(format: "About %.1f seconds per back-and-forth · %.2f° swing. Suggested pet distance: %.1f°.",
+                            calibration.strokePeriod, calibration.swingDegrees,
+                            calibration.suggestedDistance))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if abs(controller.sensitivity - calibration.suggestedDistance) > 0.001 {
+                    Button("Use suggested distance") { controller.useSuggestedDistance() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.teal)
+                }
+            } else {
+                Label("Recording saved", systemImage: "waveform.path")
+                    .font(.subheadline.weight(.semibold))
+                Text("A steady rhythm wasn't clear enough to suggest a distance. You can save the hinge data for a closer look.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Button("Save hinge data…") { controller.saveRecording() }
+                .buttonStyle(.link)
+                .font(.caption)
+            if let error = controller.recordingError {
+                Text(error).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var angleLabel: String {
@@ -317,11 +353,11 @@ private struct PetMenu: View {
                         "“\(controller.testPhrase ?? "")” Keep petting for the next line.",
                         "heart.fill", .teal)
             }
-            if controller.testWiggles == 1 {
-                return ("One stroke felt", "Keep petting gently for one more stroke.",
+            if controller.testWiggles > 0 {
+                return ("Finding your rhythm", "\(controller.testWiggles) of 3 steady strokes felt. Keep the same pace.",
                         "waveform", .teal)
             }
-            return ("Listening for a pet", "Move gently back and forth twice.",
+            return ("Recording petting", "Move gently back and forth at a steady pace.",
                     "waveform", .teal)
         }
         if controller.armed {
@@ -340,7 +376,7 @@ private struct PetMenu: View {
             return ("Ready to test", "Allow Accessibility before sending compliments.",
                     "hand.tap.fill", .accentColor)
         }
-        return ("Ready for a pet", "Test two gentle strokes, then turn on compliments.",
+        return ("Ready for a pet", "Record a few steady strokes, then turn on compliments.",
                 "checkmark.circle.fill", .green)
     }
 }
