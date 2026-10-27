@@ -11,8 +11,9 @@ final class PetController: ObservableObject {
     @Published private(set) var angle: Double?
     @Published private(set) var hingeError: String?
     @Published private(set) var hingeResolutionDegrees = 1.0
-    @Published private(set) var accessibilityAllowed = WarpMessenger.hasAccessibilityAccess
+    @Published private(set) var accessibilityAllowed = AppMessenger.hasAccessibilityAccess
     @Published private(set) var lastSent: String?
+    @Published private(set) var lastSentApp: SupportedApp?
     @Published private(set) var sentCount = 0
     @Published private(set) var testing = false
     @Published private(set) var testSecondsRemaining = 0
@@ -32,7 +33,6 @@ final class PetController: ObservableObject {
     }
 
     private var hingeDetector = PetGestureDetector(excursionDegrees: 0.1)
-    private var warpFrontmost = false
     private var lastPermissionCheck = 0.0
     private var testTimer: Timer?
 
@@ -61,8 +61,8 @@ final class PetController: ObservableObject {
     var hingeAvailable: Bool { hingeError == nil && angle != nil }
 
     func requestAccessibility() {
-        WarpMessenger.requestAccessibilityAccess()
-        accessibilityAllowed = WarpMessenger.hasAccessibilityAccess
+        AppMessenger.requestAccessibilityAccess()
+        accessibilityAllowed = AppMessenger.hasAccessibilityAccess
     }
 
     func startTest() {
@@ -97,8 +97,7 @@ final class PetController: ObservableObject {
 
     private func refreshPermissions(at time: TimeInterval) {
         if time - lastPermissionCheck > 1 {
-            accessibilityAllowed = WarpMessenger.hasAccessibilityAccess
-            warpFrontmost = WarpMessenger.isWarpFrontmost
+            accessibilityAllowed = AppMessenger.hasAccessibilityAccess
             if !accessibilityAllowed { armed = false }
             lastPermissionCheck = time
         }
@@ -116,7 +115,7 @@ final class PetController: ObservableObject {
             return
         }
 
-        guard armed, accessibilityAllowed, warpFrontmost else {
+        guard armed, accessibilityAllowed, AppMessenger.frontmostSupportedApp != nil else {
             hingeDetector.reset(at: newAngle)
             return
         }
@@ -127,8 +126,9 @@ final class PetController: ObservableObject {
 
     private func sendCompliment() {
         let message = Compliments.random(excluding: lastSent)
-        if WarpMessenger.send(message) {
+        if let app = AppMessenger.send(message) {
             lastSent = message
+            lastSentApp = app
             sentCount += 1
         }
     }

@@ -2,11 +2,11 @@ import AppKit
 @preconcurrency import ApplicationServices
 
 @MainActor
-enum WarpMessenger {
-    static let bundleID = "dev.warp.Warp-Stable"
-
-    static var isWarpFrontmost: Bool {
-        NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleID
+enum AppMessenger {
+    static var frontmostSupportedApp: SupportedApp? {
+        SupportedApp.matching(
+            bundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        )
     }
 
     static var hasAccessibilityAccess: Bool { AXIsProcessTrusted() }
@@ -16,11 +16,11 @@ enum WarpMessenger {
         _ = AXIsProcessTrustedWithOptions(options)
     }
 
-    /// Sends a single line to the currently focused Warp input, then presses Return.
-    static func send(_ message: String) -> Bool {
-        guard hasAccessibilityAccess, isWarpFrontmost,
+    /// Types one line into the focused input of a supported app, then presses Return.
+    static func send(_ message: String) -> SupportedApp? {
+        guard hasAccessibilityAccess, let app = frontmostSupportedApp,
               !message.contains("\n"), !message.contains("\r"),
-              let source = CGEventSource(stateID: .hidSystemState) else { return false }
+              let source = CGEventSource(stateID: .hidSystemState) else { return nil }
 
         let characters = Array(message.utf16)
         guard !characters.isEmpty, characters.count < 200,
@@ -28,17 +28,19 @@ enum WarpMessenger {
               let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false),
               let enterDown = CGEvent(keyboardEventSource: source, virtualKey: 36, keyDown: true),
               let enterUp = CGEvent(keyboardEventSource: source, virtualKey: 36, keyDown: false)
-        else { return false }
+        else { return nil }
 
         characters.withUnsafeBufferPointer { buffer in
             guard let base = buffer.baseAddress else { return }
             down.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: base)
             up.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: base)
         }
+
+        guard frontmostSupportedApp == app else { return nil }
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
         enterDown.post(tap: .cghidEventTap)
         enterUp.post(tap: .cghidEventTap)
-        return true
+        return app
     }
 }

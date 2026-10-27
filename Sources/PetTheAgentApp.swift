@@ -32,7 +32,7 @@ private struct PetMenu: View {
 
             if let lastSent = controller.lastSent {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("LAST COMPLIMENT · \(controller.sentCount) SENT")
+                    Text("LAST TO \(controller.lastSentApp?.displayName.uppercased() ?? "APP") · \(controller.sentCount) SENT")
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.8)
                         .foregroundStyle(.secondary)
@@ -172,7 +172,7 @@ private struct PetMenu: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Send compliments")
                         .font(.subheadline.weight(.semibold))
-                    Text("Only while Warp is in front")
+                    Text("Warp · Codex · Claude · Cursor")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -193,7 +193,7 @@ private struct PetMenu: View {
                 .controlSize(.regular)
             }
 
-            Text("Keep a Claude or Codex prompt active in Warp. A pet types and submits its compliment.")
+            Text("Focus a chat prompt before petting. In Cursor, the code editor can also receive typing.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -236,7 +236,7 @@ private struct PetMenu: View {
                     "waveform", .teal)
         }
         if controller.armed {
-            return ("Petting is on", "Return to your Claude or Codex prompt in Warp.",
+            return ("Petting is on", "Focus a chat prompt in Warp, Codex, Claude, or Cursor.",
                     "pawprint.fill", .teal)
         }
         if !controller.accessibilityAllowed {
