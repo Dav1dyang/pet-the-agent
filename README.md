@@ -4,7 +4,7 @@ A tiny macOS menu-bar app that turns a gentle MacBook screen wiggle into a rando
 
 ## Get started
 
-1. Download and unzip [Pet the Agent.zip](dist/Pet%20the%20Agent.zip), then open **Pet the Agent.app**.
+1. Download and unzip [Pet the Agent.zip](dist/Pet%20the%20Agent.zip), then open **Pet the Agent.app**. If you are updating, quit the old menu-bar app first.
 2. Click the paw in the menu bar. Check that **Screen angle** shows a live number.
 3. Set **Pet distance**. A smaller number needs a smaller screen wiggle.
 4. Click **Test a pet** and gently rock the screen back and forth **twice** during the eight-second test. The test never types into another app.

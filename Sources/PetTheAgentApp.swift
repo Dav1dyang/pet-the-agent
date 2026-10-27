@@ -1,16 +1,65 @@
 import SwiftUI
+import Combine
 
 @main
 struct PetTheAgentApp: App {
-    @StateObject private var controller = PetController()
+    @NSApplicationDelegateAdaptor(PetAppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        MenuBarExtra {
-            PetMenu(controller: controller)
-        } label: {
-            Label("Pet the Agent", systemImage: controller.armed ? "pawprint.fill" : "pawprint")
+        Settings { EmptyView() }
+    }
+}
+
+@MainActor
+private final class PetAppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+    private let controller = PetController()
+    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private let popover = NSPopover()
+    private var armedObservation: AnyCancellable?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let host = NSHostingController(rootView: PetMenu(controller: controller))
+        host.sizingOptions = [.preferredContentSize]
+
+        popover.behavior = .transient
+        popover.animates = true
+        popover.contentViewController = host
+        popover.delegate = self
+        popover.contentSize = host.sizeThatFits(
+            in: CGSize(width: 358, height: 1000)
+        )
+
+        if let button = statusItem.button {
+            button.toolTip = "Pet the Agent"
+            button.target = self
+            button.action = #selector(togglePopover(_:))
         }
-        .menuBarExtraStyle(.window)
+
+        armedObservation = controller.$armed.sink { [weak self] armed in
+            MainActor.assumeIsolated { self?.updateStatusIcon(armed: armed) }
+        }
+    }
+
+    @objc private func togglePopover(_ sender: Any?) {
+        guard let button = statusItem.button else { return }
+        if popover.isShown {
+            popover.performClose(sender)
+        } else {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            button.state = .on
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        statusItem.button?.state = .off
+    }
+
+    private func updateStatusIcon(armed: Bool) {
+        let symbol = armed ? "pawprint.fill" : "pawprint"
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Pet the Agent")
+        image?.isTemplate = true
+        statusItem.button?.image = image
     }
 }
 
@@ -130,9 +179,8 @@ private struct PetMenu: View {
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
                     .monospacedDigit()
             }
-            Slider(value: $controller.sensitivity,
-                   in: controller.hingeMinimumDegrees...5,
-                   step: controller.hingeResolutionDegrees < 1 ? 0.1 : 1)
+            Slider(value: sensitivityBinding,
+                   in: controller.hingeMinimumDegrees...5)
                 .tint(.teal)
                 .disabled(!controller.hingeAvailable || controller.testing)
                 .accessibilityLabel("Pet distance")
@@ -221,6 +269,19 @@ private struct PetMenu: View {
     private var angleLabel: String {
         guard let angle = controller.angle else { return "—" }
         return String(format: controller.hingeResolutionDegrees < 1 ? "%.2f°" : "%.0f°", angle)
+    }
+
+    private var sensitivityBinding: Binding<Double> {
+        Binding(
+            get: { controller.sensitivity },
+            set: { value in
+                let step = controller.hingeResolutionDegrees < 1 ? 0.1 : 1.0
+                let rounded = (value / step).rounded() * step
+                if abs(controller.sensitivity - rounded) > 0.0001 {
+                    controller.sensitivity = rounded
+                }
+            }
+        )
     }
 
     private var status: (title: String, detail: String, symbol: String, tint: Color) {
