@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import Combine
 
@@ -11,28 +12,17 @@ struct PetTheAgentApp: App {
 }
 
 @MainActor
-private final class PetAppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+private final class PetAppDelegate: NSObject, NSApplicationDelegate {
     private let controller = PetController()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private let popover = NSPopover()
+    private var settingsWindow: NSWindow?
     private var iconObservation: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let host = NSHostingController(rootView: PetMenu(controller: controller))
-        host.sizingOptions = [.preferredContentSize]
-
-        popover.behavior = .transient
-        popover.animates = true
-        popover.contentViewController = host
-        popover.delegate = self
-        popover.contentSize = host.sizeThatFits(
-            in: CGSize(width: 358, height: 1000)
-        )
-
         if let button = statusItem.button {
-            button.toolTip = "Pet the Agent"
             button.target = self
-            button.action = #selector(togglePopover(_:))
+            button.action = #selector(statusItemClicked(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
         iconObservation = controller.$armed.combineLatest(controller.$justReceivedPet)
@@ -43,19 +33,138 @@ private final class PetAppDelegate: NSObject, NSApplicationDelegate, NSPopoverDe
         }
     }
 
-    @objc private func togglePopover(_ sender: Any?) {
-        guard let button = statusItem.button else { return }
-        if popover.isShown {
-            popover.performClose(sender)
+    @objc private func statusItemClicked(_ sender: Any?) {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            showSettingsMenu()
         } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            button.state = .on
-            NSApp.activate(ignoringOtherApps: true)
+            togglePetting()
         }
     }
 
-    func popoverDidClose(_ notification: Notification) {
-        statusItem.button?.state = .off
+    private func togglePetting() {
+        if controller.armed {
+            controller.armed = false
+            return
+        }
+        guard !controller.testing else { return }
+        guard controller.hingeAvailable else {
+            NSSound.beep()
+            return
+        }
+        if !controller.accessibilityAllowed {
+            controller.requestAccessibility()
+            guard controller.accessibilityAllowed else { return }
+        }
+        controller.armed = true
+    }
+
+    private func showSettingsMenu() {
+        guard let button = statusItem.button, let event = NSApp.currentEvent else { return }
+        let menu = NSMenu(title: "Pet the Agent")
+        menu.autoenablesItems = false
+
+        let status = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
+        status.isEnabled = false
+        menu.addItem(status)
+
+        let toggle = NSMenuItem(title: controller.armed ? "Turn petting off" : "Turn petting on",
+                                action: #selector(toggleFromMenu(_:)), keyEquivalent: "")
+        toggle.target = self
+        toggle.isEnabled = controller.armed || (controller.hingeAvailable && !controller.testing)
+        menu.addItem(toggle)
+        menu.addItem(.separator())
+
+        let distance = NSMenuItem(title: "Pet distance · \(distanceLabel)", action: nil,
+                                  keyEquivalent: "")
+        distance.submenu = makeDistanceMenu()
+        menu.addItem(distance)
+
+        let tune = NSMenuItem(title: "Test & tune…", action: #selector(openSettings(_:)),
+                              keyEquivalent: "")
+        tune.target = self
+        menu.addItem(tune)
+
+        if !controller.accessibilityAllowed && controller.hingeAvailable {
+            let permission = NSMenuItem(title: "Allow Accessibility…",
+                                        action: #selector(requestAccessibility(_:)),
+                                        keyEquivalent: "")
+            permission.target = self
+            menu.addItem(permission)
+        }
+
+        menu.addItem(.separator())
+        let quit = NSMenuItem(title: "Quit Pet the Agent", action: #selector(quitApp(_:)),
+                              keyEquivalent: "")
+        quit.target = self
+        menu.addItem(quit)
+        NSMenu.popUpContextMenu(menu, with: event, for: button)
+    }
+
+    private func makeDistanceMenu() -> NSMenu {
+        let menu = NSMenu(title: "Pet distance")
+        let choices: [Double] = controller.hingeMinimumDegrees >= 1
+            ? [1, 2, 3, 4, 5]
+            : [0.02, 0.03, 0.04, 0.05, 0.08, 0.1, 0.2, 0.5, 1, 2, 5]
+        for value in choices {
+            if (value == 0.1 || value == 1) && !menu.items.isEmpty {
+                menu.addItem(.separator())
+            }
+            let label = value < 0.1 ? String(format: "%.2f°", value)
+                        : (value < 1 ? String(format: "%.1f°", value)
+                           : String(format: "%.0f°", value))
+            let item = NSMenuItem(title: label, action: #selector(selectDistance(_:)),
+                                  keyEquivalent: "")
+            item.target = self
+            item.representedObject = NSNumber(value: value)
+            item.state = abs(controller.sensitivity - value) < 0.001 ? .on : .off
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc private func toggleFromMenu(_ sender: Any?) { togglePetting() }
+
+    @objc private func selectDistance(_ sender: NSMenuItem) {
+        guard let number = sender.representedObject as? NSNumber else { return }
+        controller.sensitivity = number.doubleValue
+    }
+
+    @objc private func requestAccessibility(_ sender: Any?) {
+        controller.requestAccessibility()
+    }
+
+    @objc private func openSettings(_ sender: Any?) {
+        if settingsWindow == nil {
+            let host = NSHostingController(rootView: PetMenu(controller: controller))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 358, height: 430),
+                                  styleMask: [.titled, .closable], backing: .buffered,
+                                  defer: false)
+            window.title = "Pet the Agent · Test & tune"
+            window.contentViewController = host
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsWindow = window
+        }
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func quitApp(_ sender: Any?) { NSApp.terminate(nil) }
+
+    private var statusTitle: String {
+        if controller.hingeError != nil { return "Hinge unavailable" }
+        if !controller.hingeAvailable { return "Finding the screen hinge…" }
+        return "Petting \(controller.armed ? "on" : "off") · \(angleLabel)"
+    }
+
+    private var distanceLabel: String {
+        String(format: controller.sensitivity < 0.1 ? "%.2f°" :
+               (controller.sensitivity < 1 ? "%.1f°" : "%.0f°"), controller.sensitivity)
+    }
+
+    private var angleLabel: String {
+        guard let angle = controller.angle else { return "—" }
+        return String(format: controller.hingeResolutionDegrees < 1 ? "%.2f°" : "%.0f°", angle)
     }
 
     private func updateStatusIcon(armed: Bool, justReceivedPet: Bool) {
@@ -63,54 +172,62 @@ private final class PetAppDelegate: NSObject, NSApplicationDelegate, NSPopoverDe
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Pet the Agent")
         image?.isTemplate = true
         statusItem.button?.image = image
+        statusItem.button?.toolTip = "Petting \(armed ? "on" : "off") · Click to \(armed ? "turn off" : "turn on") · Right-click for settings"
+        statusItem.button?.setAccessibilityLabel("Pet the Agent, petting \(armed ? "on" : "off")")
     }
 }
 
 private struct PetMenu: View {
     @ObservedObject var controller: PetController
+    @State private var tuningExpanded = true
+    @State private var sendingExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 0) {
             header
-            statusCard
-            hingeControls
-
-            if let outcome = controller.testOutcome {
-                testResult(outcome)
-            }
-            if controller.hasRecording { recordingCard }
-
             Divider()
-            sendingControls
-
-            if let lastSent = controller.lastSent {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("LAST TO \(controller.lastSentApp?.displayName.uppercased() ?? "APP") · \(controller.sentCount) SENT")
-                        .font(.system(size: 10, weight: .semibold))
-                        .tracking(0.8)
-                        .foregroundStyle(.secondary)
-                    Text(lastSent)
-                        .font(.subheadline)
-                        .fixedSize(horizontal: false, vertical: true)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    statusCard
+                    DisclosureGroup(isExpanded: $tuningExpanded) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            hingeControls
+                            if let outcome = controller.testOutcome { testResult(outcome) }
+                            if controller.hasRecording { recordingCard }
+                        }
+                        .padding(.top, 10)
+                    } label: {
+                        Label("Pet distance & recording", systemImage: "slider.horizontal.3")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    Divider()
+                    DisclosureGroup(isExpanded: $sendingExpanded) {
+                        sendingControls.padding(.top, 10)
+                    } label: {
+                        Label("How sending works", systemImage: "text.bubble")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    if let lastSent = controller.lastSent {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("LAST TO \(controller.lastSentApp?.displayName.uppercased() ?? "APP") · \(controller.sentCount) SENT")
+                                .font(.system(size: 10, weight: .semibold))
+                                .tracking(0.8)
+                                .foregroundStyle(.secondary)
+                            Text(lastSent)
+                                .font(.caption)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(Color.accentColor.opacity(0.08),
+                                    in: RoundedRectangle(cornerRadius: 12))
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-            }
-
-            HStack {
-                Text("Keep petting for the next line · at least 2.5s apart")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                Button("Quit") { NSApplication.shared.terminate(nil) }
-                    .buttonStyle(.plain)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .padding(18)
             }
         }
-        .padding(18)
-        .frame(width: 358)
+        .frame(width: 358, height: 430)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var header: some View {
@@ -124,12 +241,18 @@ private struct PetMenu: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Pet the Agent")
                     .font(.system(size: 17, weight: .semibold))
-                Text("A little encouragement, one pet at a time")
+                Text("Click the menu bar paw to \(controller.armed ? "pause" : "start")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
+            Circle()
+                .fill(controller.armed ? Color.green : Color.secondary.opacity(0.4))
+                .frame(width: 8, height: 8)
+                .accessibilityLabel(controller.armed ? "Petting on" : "Petting off")
         }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
     }
 
     private var statusCard: some View {
@@ -230,29 +353,10 @@ private struct PetMenu: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var sendingControls: some View {
         VStack(alignment: .leading, spacing: 11) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Send compliments")
-                        .font(.subheadline.weight(.semibold))
-                    Text("Warp · Codex · Claude · Cursor")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Toggle("Send compliments", isOn: $controller.armed)
-                    .labelsHidden()
-                    .tint(.teal)
-                    .disabled(!controller.hingeAvailable ||
-                              !controller.accessibilityAllowed ||
-                              controller.testing)
-            }
-
             if !controller.accessibilityAllowed && controller.hingeAvailable {
                 Button("Allow Accessibility…") {
                     controller.requestAccessibility()
@@ -261,10 +365,13 @@ private struct PetMenu: View {
                 .controlSize(.regular)
             }
 
-            Text("Close this menu and focus an empty chat prompt before petting. A pet just after typing won't send. In Cursor, a focused code editor can receive text.")
+            Text("Focus an empty chat prompt in Warp, Codex, Claude, or Cursor before petting. A pet just after typing won't send. In Cursor, a focused code editor can receive text.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Text("Keep petting for another line · at least 2.5 seconds apart")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -376,7 +483,7 @@ private struct PetMenu: View {
                         "hand.raised.fill", .orange)
             }
             if !controller.targetAppReady {
-                return ("Back to your chat", "Close this menu and focus an empty chat prompt to send.",
+                return ("Back to your chat", "Focus an empty chat prompt to send.",
                         "arrow.uturn.forward", .teal)
             }
             return ("Petting is on", "Focus a chat prompt in Warp, Codex, Claude, or Cursor.",
@@ -386,7 +493,7 @@ private struct PetMenu: View {
             return ("Ready to test", "Allow Accessibility before sending compliments.",
                     "hand.tap.fill", .accentColor)
         }
-        return ("Ready for a pet", "Record a few steady strokes, then turn on compliments.",
+        return ("Ready for a pet", "Click the menu bar paw to turn on. Right-click to test and tune.",
                 "checkmark.circle.fill", .green)
     }
 }
