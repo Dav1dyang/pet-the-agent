@@ -2,12 +2,15 @@ import AppKit
 import SwiftUI
 import Combine
 
+@MainActor
 @main
-struct PetTheAgentApp: App {
-    @NSApplicationDelegateAdaptor(PetAppDelegate.self) private var appDelegate
+struct PetTheAgentApp {
+    private static let appDelegate = PetAppDelegate()
 
-    var body: some Scene {
-        Settings { EmptyView() }
+    static func main() {
+        let app = NSApplication.shared
+        app.delegate = appDelegate
+        app.run()
     }
 }
 

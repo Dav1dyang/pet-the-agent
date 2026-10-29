@@ -5,7 +5,7 @@ A tiny macOS menu-bar app that turns gentle MacBook screen petting into a playfu
 ## Get started
 
 1. Download and unzip [Pet the Agent.zip](dist/Pet%20the%20Agent.zip), then open **Pet the Agent.app**. If you are updating, quit the old menu-bar app first.
-2. **Left-click the paw** in the menu bar to turn petting on or off. An outline paw means off; a filled paw means on. If macOS asks for Accessibility, allow it and click the paw again.
+2. The app opens quietly in the menu bar, without a window. **Left-click the paw** to turn petting on or off. An outline paw means off; a filled paw means on. If macOS asks for Accessibility, allow it and click the paw again.
 3. **Right-click the paw** for a small settings menu. It shows the live screen angle, a **Pet distance** submenu, **Test & tune…**, Accessibility access when needed, and Quit.
 4. Choose **Test & tune…** to open a compact window with the live hinge angle and distance slider. Click **Record & tune a pet** and gently pet the screen back and forth at a steady pace. The 15-second test previews detections and shows the moving center. You can stop it at any time. The test never types into another app.
 5. If a steady rhythm was found, click **Use suggested distance**. **Save hinge data…** exports the recorded angles, moving center, and detected events as a CSV file for closer inspection. The fine-sensor default is **0.03°**; recordings from the first two real MacBook tests suggested **0.02°** and **0.03°**. Focus an empty chat prompt in Warp, Codex, Claude, or Cursor before petting.
